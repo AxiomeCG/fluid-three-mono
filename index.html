@@ -829,7 +829,7 @@
       this.options = {
         iterations_poisson: 32,
         iterations_viscous: 32,
-        mouse_force: 20,
+        mouse_force: 64,
         resolution: 0.5,
         cursor_size: 100,
         viscous: 30,
@@ -1140,7 +1140,7 @@
           varying vec3 vPosition;
           void main() {
 
-            vec3 correctedPosition = vec3(position.x + sin(snoise(position + uTime * 0.01) + snoise(position + uTime * 0.1)),  position.y + cos(snoise(position + uTime * 0.2)) - 1.0, position.z);
+            vec3 correctedPosition = vec3(position.x +  sin(snoise(position + uTime * 0.01) + snoise(position + uTime * 0.1)),  position.y + cos(snoise(position + uTime * 0.2)) - 1.0, position.z);
 
             vec4 mvPosition = modelViewMatrix * vec4( correctedPosition, 1.0 );
 
