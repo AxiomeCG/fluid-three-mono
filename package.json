@@ -1,0 +1,15 @@
+{
+  "name": "fluid-three-mono",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "lil-gui": "^0.19.0",
+    "vite": "^4.4.5"
+  }
+}

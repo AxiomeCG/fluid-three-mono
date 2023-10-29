@@ -1,0 +1,1315 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <link rel="icon" type="image/svg+xml" href="/logo.png"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Axiome Experimentation</title>
+</head>
+<body>
+<div id="app">
+  <span id="title">CreaSpark</span>
+  <canvas id="canvas"></canvas>
+</div>
+
+</body>
+
+<style>
+    @import url('https://fonts.cdnfonts.com/css/satoshi');
+
+    html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+    }
+    #canvas {
+        position: absolute;
+        z-index: 0;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+    }
+
+    #title {
+        font-family: "Satoshi", sans-serif;
+        position: absolute;
+        z-index: 1;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+
+        font-size: 15vw;
+        color: white;
+        mix-blend-mode: difference;
+
+    }
+</style>
+
+<script type="module">
+  import * as THREE from 'https://unpkg.com/three@0.148.0/build/three.module.js';
+  import * as dat from 'lil-gui';
+
+
+  /** SHADER DECLARATION **/
+
+  const face_vert = `
+    attribute vec3 position;
+    uniform vec2 px;
+    uniform vec2 boundarySpace;
+    varying vec2 uv;
+
+    precision highp float;
+
+    void main(){
+        vec3 pos = position;
+        vec2 scale = 1.0 - boundarySpace * 2.0;
+        pos.xy = pos.xy * scale;
+        uv = vec2(0.5)+(pos.xy)*0.5;
+        gl_Position = vec4(pos, 1.0);
+    }
+`;
+
+  const line_vert = `
+
+  attribute vec3 position;
+  varying vec2 uv;
+  uniform vec2 px;
+
+
+  precision highp float;
+
+  void main(){
+      vec3 pos = position;
+      uv = 0.5 + pos.xy * 0.5;
+      vec2 n = sign(pos.xy);
+      pos.xy = abs(pos.xy) - px * 1.0;
+      pos.xy *= n;
+      gl_Position = vec4(pos, 1.0);
+  }
+  `;
+
+  const color_frag = `
+   precision highp float;
+   uniform sampler2D velocity;
+   varying vec2 uv;
+
+   void main(){
+       vec3 velocityColor = texture2D(velocity, uv).xyz;
+
+
+       float strength = length(velocityColor);
+
+       vec3 orangeColor = vec3(1.0, 0.5, 0.0);
+
+       gl_FragColor = vec4(mix(vec3(0.0), orangeColor, clamp(pow(strength, 3.), 0., 1.)), 1.0);
+   }
+`;
+
+  const advection_frag = `
+  precision highp float;
+  uniform sampler2D velocity;
+  uniform float dt;
+  uniform bool isBFECC;
+  // uniform float uvScale;
+  uniform vec2 fboSize;
+  uniform vec2 px;
+  varying vec2 uv;
+
+  void main(){
+      vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
+
+      if(isBFECC == false){
+          vec2 vel = texture2D(velocity, uv).xy;
+          vec2 uv2 = uv - vel * dt * ratio;
+          vec2 newVel = texture2D(velocity, uv2).xy;
+          gl_FragColor = vec4(newVel, 0.0, 0.0);
+      } else {
+          vec2 spot_new = uv;
+          vec2 vel_old = texture2D(velocity, uv).xy;
+          // back trace
+          vec2 spot_old = spot_new - vel_old * dt * ratio;
+          vec2 vel_new1 = texture2D(velocity, spot_old).xy;
+
+          // forward trace
+          vec2 spot_new2 = spot_old + vel_new1 * dt * ratio;
+
+          vec2 error = spot_new2 - spot_new;
+
+          vec2 spot_new3 = spot_new - error / 2.0;
+          vec2 vel_2 = texture2D(velocity, spot_new3).xy;
+
+          // back trace 2
+          vec2 spot_old2 = spot_new3 - vel_2 * dt * ratio;
+          // gl_FragColor = vec4(spot_old2, 0.0, 0.0);
+          vec2 newVel2 = texture2D(velocity, spot_old2).xy;
+          gl_FragColor = vec4(newVel2, 0.0, 0.0);
+      }
+  }
+
+  `;
+
+
+  const divergence_frag = `
+  precision highp float;
+  uniform sampler2D velocity;
+  uniform float dt;
+  uniform vec2 px;
+  varying vec2 uv;
+
+  void main(){
+      float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;
+      float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;
+      float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;
+      float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;
+      float divergence = (x1-x0 + y1-y0) / 2.0;
+
+      gl_FragColor = vec4(divergence / dt);
+  }
+`;
+
+
+  const mouse_vert = `
+  precision highp float;
+
+  attribute vec3 position;
+  attribute vec2 uv;
+  uniform vec2 center;
+  uniform vec2 scale;
+  uniform vec2 px;
+  varying vec2 vUv;
+
+  void main(){
+      vec2 pos = position.xy * scale * 2.0 * px + center;
+      vUv = uv;
+      gl_Position = vec4(pos, 0.0, 1.0);
+  }
+
+`;
+
+  const externalForce_frag = `
+
+  precision highp float;
+
+  uniform vec2 force;
+  uniform vec2 center;
+  uniform vec2 scale;
+  uniform vec2 px;
+  varying vec2 vUv;
+
+  void main(){
+      vec2 circle = (vUv - 0.5) * 2.0;
+      float d = 1.0-min(length(circle), 1.0);
+      d *= d;
+      gl_FragColor = vec4(force * d, 0, 1);
+  }
+`;
+
+
+  const poisson_frag = `
+  precision highp float;
+  uniform sampler2D pressure;
+  uniform sampler2D divergence;
+  uniform vec2 px;
+  varying vec2 uv;
+
+  void main(){
+      // poisson equation
+      float p0 = texture2D(pressure, uv+vec2(px.x * 2.0,  0)).r;
+      float p1 = texture2D(pressure, uv-vec2(px.x * 2.0, 0)).r;
+      float p2 = texture2D(pressure, uv+vec2(0, px.y * 2.0 )).r;
+      float p3 = texture2D(pressure, uv-vec2(0, px.y * 2.0 )).r;
+      float div = texture2D(divergence, uv).r;
+
+      float newP = (p0 + p1 + p2 + p3) / 4.0 - div;
+      gl_FragColor = vec4(newP);
+  }
+
+`;
+
+  const pressure_frag = `
+    precision highp float;
+    uniform sampler2D pressure;
+    uniform sampler2D velocity;
+    uniform vec2 px;
+    uniform float dt;
+    varying vec2 uv;
+
+    void main(){
+        float step = 1.0;
+
+        float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;
+        float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;
+        float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;
+        float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;
+
+        vec2 v = texture2D(velocity, uv).xy;
+        vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.5;
+        v = v - gradP * dt;
+        gl_FragColor = vec4(v, 0.0, 1.0);
+    }
+`;
+
+  const viscous_frag = `
+  precision highp float;
+  uniform sampler2D velocity;
+  uniform sampler2D velocity_new;
+  uniform float v;
+  uniform vec2 px;
+  uniform float dt;
+
+  varying vec2 uv;
+
+  void main(){
+      // poisson equation
+      vec2 old = texture2D(velocity, uv).xy;
+      vec2 new0 = texture2D(velocity_new, uv + vec2(px.x * 2.0, 0)).xy;
+      vec2 new1 = texture2D(velocity_new, uv - vec2(px.x * 2.0, 0)).xy;
+      vec2 new2 = texture2D(velocity_new, uv + vec2(0, px.y * 2.0)).xy;
+      vec2 new3 = texture2D(velocity_new, uv - vec2(0, px.y * 2.0)).xy;
+
+      vec2 new = 4.0 * old + v * dt * (new0 + new1 + new2 + new3);
+      new /= 4.0 * (1.0 + v * dt);
+
+      gl_FragColor = vec4(new, 0.0, 0.0);
+  }
+
+`;
+
+
+  /** EXPERIENCE **/
+  class EventBus {
+    /**
+     * Initialize a new event bus instance.
+     */
+    constructor() {
+      this.bus = document.createElement('fakeelement');
+    }
+
+    /**
+     * Add an event listener.
+     */
+    on(event, callback) {
+      this.bus.addEventListener(event, callback);
+    }
+
+    /**
+     * Remove an event listener.
+     */
+    off(event, callback) {
+      this.bus.removeEventListener(event, callback);
+    }
+
+    /**
+     * Dispatch an event.
+     */
+    emit(event, detail = {}) {
+      this.bus.dispatchEvent(new CustomEvent(event, {detail}));
+    }
+  }
+
+  class Experience {
+    constructor() {
+      this.width = null;
+      this.height = null;
+      this.aspect = this.width / this.height;
+      this.isMobile = false;
+      this.breakpoint = 768;
+
+      this.fboWidth = null;
+      this.fboHeight = null;
+
+      this.resizeFunc = this.resize.bind(this);
+
+      this.time = 0;
+      this.delta = 0;
+
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.Camera();
+      this.camera.position.z = 2;
+
+    }
+
+    init() {
+      this.pixelRatio = window.devicePixelRatio;
+
+      this.resize();
+
+      this.renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        alpha: true,
+        canvas: document.querySelector('#canvas')
+      });
+
+      this.renderer.autoClear = false;
+
+      this.renderer.setSize(this.width, this.height);
+
+      this.renderer.setClearColor(0x000000);
+
+      this.renderer.setPixelRatio(this.pixelRatio);
+
+      this.clock = new THREE.Clock();
+      this.clock.start();
+    }
+
+    resize() {
+      this.width = window.innerWidth; // document.body.clientWidth;
+      this.height = window.innerHeight;
+      this.aspect = this.width / this.height;
+
+      if (this.renderer) this.renderer.setSize(this.width, this.height);
+    }
+
+    update() {
+      this.delta = this.clock.getDelta(); // Math.min(0.01, this.clock.getDelta());
+      this.time += this.delta;
+    }
+  }
+
+  const experience = new Experience();
+
+
+  class Mouse {
+    constructor() {
+      this.mouseMoved = false;
+      this.coords = new THREE.Vector2();
+      this.coords_old = new THREE.Vector2();
+      this.diff = new THREE.Vector2();
+      this.timer = null;
+      this.count = 0;
+    }
+
+    init() {
+      document.body.addEventListener('mousemove', this.onDocumentMouseMove.bind(this), false);
+      document.body.addEventListener('touchstart', this.onDocumentTouchStart.bind(this), false);
+      document.body.addEventListener('touchmove', this.onDocumentTouchMove.bind(this), false);
+    }
+
+    setCoords(x, y) {
+      if (this.timer) clearTimeout(this.timer);
+      this.coords.set((x / experience.width) * 2 - 1, -(y / experience.height) * 2 + 1);
+      this.mouseMoved = true;
+      this.timer = setTimeout(() => {
+        this.mouseMoved = false;
+      }, 100);
+
+    }
+
+    onDocumentMouseMove(event) {
+      this.setCoords(event.clientX, event.clientY);
+    }
+
+    onDocumentTouchStart(event) {
+      if (event.touches.length === 1) {
+        // event.preventDefault();
+        this.setCoords(event.touches[0].pageX, event.touches[0].pageY);
+      }
+    }
+
+    onDocumentTouchMove(event) {
+      if (event.touches.length === 1) {
+        // event.preventDefault();
+
+        this.setCoords(event.touches[0].pageX, event.touches[0].pageY);
+      }
+    }
+
+    update() {
+      this.diff.subVectors(this.coords, this.coords_old);
+      this.coords_old.copy(this.coords);
+
+      if (this.coords_old.x === 0 && this.coords_old.y === 0) this.diff.set(0, 0);
+    }
+  }
+
+  const mouse = new Mouse();
+
+
+  /** SIMULATION OF FLUIDS **/
+
+  class CustomShaderPass {
+    constructor(props) {
+      this.props = props;
+      this.uniforms = this.props.material?.uniforms;
+    }
+
+    init() {
+      this.scene = new THREE.Scene();
+      this.camera = new THREE.Camera();
+
+      if (this.uniforms) {
+        this.material = new THREE.RawShaderMaterial(this.props.material);
+        this.geometry = new THREE.PlaneGeometry(2.0, 2.0);
+        this.plane = new THREE.Mesh(this.geometry, this.material);
+        this.scene.add(this.plane);
+      }
+
+    }
+
+    update() {
+      experience.renderer.setRenderTarget(this.props.output);
+      experience.renderer.render(this.scene, this.camera);
+      experience.renderer.setRenderTarget(null);
+    }
+  }
+
+  class Advection extends CustomShaderPass {
+    constructor(simulationProps) {
+      super({
+        material: {
+          vertexShader: face_vert,
+          fragmentShader: advection_frag,
+          uniforms: {
+            boundarySpace: {
+              value: simulationProps.cellScale
+            },
+            px: {
+              value: simulationProps.cellScale
+            },
+            fboSize: {
+              value: simulationProps.fboSize
+            },
+            velocity: {
+              value: simulationProps.src.texture
+            },
+            dt: {
+              value: simulationProps.dt
+            },
+            isBFECC: {
+              value: true
+            }
+          },
+        },
+        output: simulationProps.dst
+      });
+
+      this.init();
+    }
+
+    init() {
+      super.init();
+      this.createBoundary();
+    }
+
+    createBoundary() {
+      const boundaryG = new THREE.BufferGeometry();
+      const vertices_boundary = new Float32Array([
+        // left
+        -1, -1, 0,
+        -1, 1, 0,
+
+        // top
+        -1, 1, 0,
+        1, 1, 0,
+
+        // right
+        1, 1, 0,
+        1, -1, 0,
+
+        // bottom
+        1, -1, 0,
+        -1, -1, 0
+      ]);
+      boundaryG.setAttribute('position', new THREE.BufferAttribute(vertices_boundary, 3));
+
+      const boundaryM = new THREE.RawShaderMaterial({
+        vertexShader: line_vert,
+        fragmentShader: advection_frag,
+        uniforms: this.uniforms
+      });
+
+      this.line = new THREE.LineSegments(boundaryG, boundaryM);
+      this.scene.add(this.line);
+    }
+
+    update({dt, isBounce, BFECC}) {
+
+      this.uniforms.dt.value = dt;
+      this.line.visible = isBounce;
+      this.uniforms.isBFECC.value = BFECC;
+
+      super.update();
+    }
+  }
+
+  class Divergence extends CustomShaderPass {
+    constructor(simProps) {
+      super({
+        material: {
+          vertexShader: face_vert,
+          fragmentShader: divergence_frag,
+          uniforms: {
+            boundarySpace: {
+              value: simProps.boundarySpace
+            },
+            velocity: {
+              value: simProps.src.texture
+            },
+            px: {
+              value: simProps.cellScale
+            },
+            dt: {
+              value: simProps.dt
+            }
+          }
+        },
+        output: simProps.dst
+      })
+
+      this.init();
+    }
+
+    update({vel}) {
+      this.uniforms.velocity.value = vel.texture;
+      super.update();
+    }
+  }
+
+
+  class ExternalForce extends CustomShaderPass {
+    constructor(simProps) {
+      super({
+        output: simProps.dst
+      });
+
+      this.init(simProps);
+    }
+
+    init(simProps) {
+      super.init();
+      const mouseG = new THREE.PlaneGeometry(
+        1, 1
+      );
+
+      const mouseM = new THREE.RawShaderMaterial({
+        vertexShader: mouse_vert,
+        fragmentShader: externalForce_frag,
+        blending: THREE.AdditiveBlending,
+        uniforms: {
+          px: {
+            value: simProps.cellScale
+          },
+          force: {
+            value: new THREE.Vector2(0.0, 0.0)
+          },
+          center: {
+            value: new THREE.Vector2(0.0, 0.0)
+          },
+          scale: {
+            value: new THREE.Vector2(simProps.cursor_size, simProps.cursor_size)
+          }
+        },
+      })
+
+      this.mouse = new THREE.Mesh(mouseG, mouseM);
+      this.scene.add(this.mouse);
+    }
+
+    update(props) {
+      const forceX = mouse.diff.x / 2 * props.mouse_force;
+      const forceY = mouse.diff.y / 2 * props.mouse_force;
+
+      const cursorSizeX = props.cursor_size * props.cellScale.x;
+      const cursorSizeY = props.cursor_size * props.cellScale.y;
+
+      const centerX = Math.min(Math.max(mouse.coords.x, -1 + cursorSizeX + props.cellScale.x * 2), 1 - cursorSizeX - props.cellScale.x * 2);
+      const centerY = Math.min(Math.max(mouse.coords.y, -1 + cursorSizeY + props.cellScale.y * 2), 1 - cursorSizeY - props.cellScale.y * 2);
+
+      const uniforms = this.mouse.material.uniforms;
+
+      uniforms.force.value.set(forceX, forceY);
+      uniforms.center.value.set(centerX, centerY);
+      uniforms.scale.value.set(props.cursor_size, props.cursor_size);
+
+      super.update();
+    }
+
+  }
+
+  class Poisson extends CustomShaderPass {
+    constructor(simProps) {
+      super({
+        material: {
+          vertexShader: face_vert,
+          fragmentShader: poisson_frag,
+          uniforms: {
+            boundarySpace: {
+              value: simProps.boundarySpace
+            },
+            pressure: {
+              value: simProps.dst_.texture
+            },
+            divergence: {
+              value: simProps.src.texture
+            },
+            px: {
+              value: simProps.cellScale
+            }
+          },
+        },
+        output: simProps.dst,
+
+        output0: simProps.dst_,
+        output1: simProps.dst
+      });
+
+      this.init();
+    }
+
+    update({iterations}) {
+      let p_in, p_out;
+
+      for (var i = 0; i < iterations; i++) {
+        if (i % 2 == 0) {
+          p_in = this.props.output0;
+          p_out = this.props.output1;
+        } else {
+          p_in = this.props.output1;
+          p_out = this.props.output0;
+        }
+
+        this.uniforms.pressure.value = p_in.texture;
+        this.props.output = p_out;
+        super.update();
+      }
+
+      return p_out;
+    }
+  }
+
+  class Pressure extends CustomShaderPass {
+    constructor(simProps) {
+      super({
+        material: {
+          vertexShader: face_vert,
+          fragmentShader: pressure_frag,
+          uniforms: {
+            boundarySpace: {
+              value: simProps.boundarySpace
+            },
+            pressure: {
+              value: simProps.src_p.texture
+            },
+            velocity: {
+              value: simProps.src_v.texture
+            },
+            px: {
+              value: simProps.cellScale
+            },
+            dt: {
+              value: simProps.dt
+            }
+          }
+        },
+        output: simProps.dst
+      });
+
+      this.init();
+    }
+
+    update({vel, pressure}) {
+      this.uniforms.velocity.value = vel.texture;
+      this.uniforms.pressure.value = pressure.texture;
+      super.update();
+    }
+
+  }
+
+  class Viscous extends CustomShaderPass {
+    constructor(simProps) {
+      super({
+        material: {
+          vertexShader: face_vert,
+          fragmentShader: viscous_frag,
+          uniforms: {
+            boundarySpace: {
+              value: simProps.boundarySpace
+            },
+            velocity: {
+              value: simProps.src.texture
+            },
+            velocity_new: {
+              value: simProps.dst_.texture
+            },
+            v: {
+              value: simProps.viscous,
+            },
+            px: {
+              value: simProps.cellScale
+            },
+            dt: {
+              value: simProps.dt
+            }
+          }
+        },
+
+        output: simProps.dst,
+
+        output0: simProps.dst_,
+        output1: simProps.dst
+      })
+
+      this.init();
+    }
+
+    update({viscous, iterations, dt}) {
+      let fbo_in, fbo_out;
+      this.uniforms.v.value = viscous;
+      for (var i = 0; i < iterations; i++) {
+        if (i % 2 == 0) {
+          fbo_in = this.props.output0;
+          fbo_out = this.props.output1;
+        } else {
+          fbo_in = this.props.output1;
+          fbo_out = this.props.output0;
+        }
+
+        this.uniforms.velocity_new.value = fbo_in.texture;
+        this.props.output = fbo_out;
+        this.uniforms.dt.value = dt;
+
+        super.update();
+      }
+
+      return fbo_out;
+    }
+  }
+
+  class Controls {
+    constructor(params) {
+      this.params = params;
+      this.init();
+    }
+
+    init() {
+      this.gui = new dat.GUI({width: 300});
+      this.gui.add(this.params, 'mouse_force', 20, 200);
+      this.gui.add(this.params, 'cursor_size', 10, 200);
+      this.gui.add(this.params, 'isViscous');
+      this.gui.add(this.params, 'viscous', 0, 500);
+      this.gui.add(this.params, 'iterations_viscous', 1, 32);
+      this.gui.add(this.params, 'iterations_poisson', 1, 32);
+      this.gui.add(this.params, 'dt', 1 / 200, 1 / 30);
+      this.gui.add(this.params, 'BFECC');
+      this.gui.close();
+    }
+
+  }
+
+
+  class Simulation {
+    constructor(props) {
+      this.props = props;
+
+      this.fbos = {
+        vel_0: null,
+        vel_1: null,
+
+        // for calc next velocity with viscous
+        vel_viscous0: null,
+        vel_viscous1: null,
+
+        // for calc pressure
+        div: null,
+
+        // for calc poisson equation
+        pressure_0: null,
+        pressure_1: null,
+      };
+
+      this.options = {
+        iterations_poisson: 32,
+        iterations_viscous: 32,
+        mouse_force: 20,
+        resolution: 0.5,
+        cursor_size: 100,
+        viscous: 30,
+        isBounce: false,
+        dt: 0.014,
+        isViscous: false,
+        BFECC: true
+      };
+
+      const controls = new Controls(this.options);
+
+      this.fboSize = new THREE.Vector2();
+      this.cellScale = new THREE.Vector2();
+      this.boundarySpace = new THREE.Vector2();
+
+      this.init();
+    }
+
+
+    init() {
+      this.calcSize();
+      this.createAllFBO();
+      this.createShaderPass();
+    }
+
+    createAllFBO() {
+      const type = (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) ? THREE.HalfFloatType : THREE.FloatType;
+
+      for (let key in this.fbos) {
+        this.fbos[key] = new THREE.WebGLRenderTarget(
+          this.fboSize.x,
+          this.fboSize.y,
+          {
+            type: type
+          }
+        )
+      }
+    }
+
+    createShaderPass() {
+      this.advection = new Advection({
+        cellScale: this.cellScale,
+        fboSize: this.fboSize,
+        dt: this.options.dt,
+        src: this.fbos.vel_0,
+        dst: this.fbos.vel_1
+      });
+
+      this.externalForce = new ExternalForce({
+        cellScale: this.cellScale,
+        cursor_size: this.options.cursor_size,
+        dst: this.fbos.vel_1,
+      });
+
+      this.viscous = new Viscous({
+        cellScale: this.cellScale,
+        boundarySpace: this.boundarySpace,
+        viscous: this.options.viscous,
+        src: this.fbos.vel_1,
+        dst: this.fbos.vel_viscous1,
+        dst_: this.fbos.vel_viscous0,
+        dt: this.options.dt,
+      });
+
+      this.divergence = new Divergence({
+        cellScale: this.cellScale,
+        boundarySpace: this.boundarySpace,
+        src: this.fbos.vel_viscous0,
+        dst: this.fbos.div,
+        dt: this.options.dt,
+      });
+
+      this.poisson = new Poisson({
+        cellScale: this.cellScale,
+        boundarySpace: this.boundarySpace,
+        src: this.fbos.div,
+        dst: this.fbos.pressure_1,
+        dst_: this.fbos.pressure_0,
+      });
+
+      this.pressure = new Pressure({
+        cellScale: this.cellScale,
+        boundarySpace: this.boundarySpace,
+        src_p: this.fbos.pressure_0,
+        src_v: this.fbos.vel_viscous0,
+        dst: this.fbos.vel_0,
+        dt: this.options.dt,
+      });
+    }
+
+    calcSize() {
+      const width = Math.round(this.options.resolution * experience.width);
+      const height = Math.round(this.options.resolution * experience.height);
+
+      const px_x = 1.0 / width;
+      const px_y = 1.0 / height;
+
+      this.cellScale.set(px_x, px_y);
+      this.fboSize.set(width, height);
+    }
+
+    resize() {
+      this.calcSize();
+
+      for (let key in this.fbos) {
+        this.fbos[key].setSize(this.fboSize.x, this.fboSize.y);
+      }
+    }
+
+
+    update() {
+
+      if (this.options.isBounce) {
+        this.boundarySpace.set(0, 0);
+      } else {
+        this.boundarySpace.copy(this.cellScale);
+      }
+
+      this.advection.update(this.options);
+
+      this.externalForce.update({
+        cursor_size: this.options.cursor_size,
+        mouse_force: this.options.mouse_force,
+        cellScale: this.cellScale
+      });
+
+      let vel = this.fbos.vel_1;
+
+      if (this.options.isViscous) {
+        vel = this.viscous.update({
+          viscous: this.options.viscous,
+          iterations: this.options.iterations_viscous,
+          dt: this.options.dt
+        });
+      }
+
+      this.divergence.update({vel});
+
+      const pressure = this.poisson.update({
+        iterations: this.options.iterations_poisson,
+      });
+
+      this.pressure.update({vel, pressure});
+    }
+  }
+
+
+  class Output {
+    constructor() {
+      this.init();
+    }
+
+    init() {
+      this.simulation = new Simulation();
+      this.scene = experience.scene;
+      this.camera = experience.camera;
+
+      this.output = new THREE.Mesh(
+        new THREE.PlaneGeometry(2, 2),
+        new THREE.RawShaderMaterial({
+          vertexShader: face_vert,
+          fragmentShader: color_frag,
+          uniforms: {
+            velocity: {
+              value: this.simulation.fbos.vel_0.texture
+            },
+            boundarySpace: {
+              value: new THREE.Vector2()
+            }
+          },
+        })
+      );
+
+      this.scene.add(this.output);
+    }
+
+    addScene(mesh) {
+      this.scene.add(mesh);
+    }
+
+    resize() {
+      this.simulation.resize();
+    }
+
+    render() {
+      experience.renderer.setRenderTarget(null);
+      experience.renderer.render(this.scene, this.camera);
+    }
+
+    update() {
+      this.simulation.update();
+      this.render();
+    }
+  }
+
+  class Particles {
+    constructor(props) {
+      this.props = props;
+    }
+
+    init() {
+
+      const position = new Float32Array(3 * this.props.count);
+      const size = new Float32Array(this.props.count);
+
+      for (let i = 0; i < this.props.count; i++) {
+        position[3 * i + 0] = Math.random() * 2 - 1;
+        position[3 * i + 1] = Math.random() * 2 - 1;
+        position[3 * i + 2] = Math.random() * 0.95;
+
+        size[i] = 5;
+      }
+
+
+      this.geometry = new THREE.BufferGeometry();
+
+      this.geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
+      this.geometry.setAttribute('size', new THREE.BufferAttribute(size, 1));
+      this.uniforms = {
+        uTime: {
+          value: 0
+        },
+      }
+      this.material = new THREE.ShaderMaterial({
+        uniforms: this.uniforms,
+        transparent: true,
+        blending: THREE.AdditiveBlending,
+        depthTest: false,
+        vertexShader: `
+
+
+          //\tSimplex 3D Noise
+          //\tby Ian McEwan, Ashima Arts
+          //
+          vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+          vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+          float snoise(vec3 v){
+            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+          // First corner
+            vec3 i  = floor(v + dot(v, C.yyy) );
+            vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+          // Other corners
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min( g.xyz, l.zxy );
+            vec3 i2 = max( g.xyz, l.zxy );
+
+            //  x0 = x0 - 0. + 0.0 * C
+            vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+            vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+            vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+
+          // Permutations
+            i = mod(i, 289.0 );
+            vec4 p = permute( permute( permute(
+                       i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                     + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                     + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+          // Gradients
+          // ( N*N points uniformly over a square, mapped onto an octahedron.)
+            float n_ = 1.0/7.0; // N=7
+            vec3  ns = n_ * D.wyz - D.xzx;
+
+            vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
+
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+            vec4 x = x_ *ns.x + ns.yyyy;
+            vec4 y = y_ *ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+
+            vec4 b0 = vec4( x.xy, y.xy );
+            vec4 b1 = vec4( x.zw, y.zw );
+
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+            vec3 p0 = vec3(a0.xy,h.x);
+            vec3 p1 = vec3(a0.zw,h.y);
+            vec3 p2 = vec3(a1.xy,h.z);
+            vec3 p3 = vec3(a1.zw,h.w);
+
+          //Normalise gradients
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+            p0 *= norm.x;
+            p1 *= norm.y;
+            p2 *= norm.z;
+            p3 *= norm.w;
+
+          // Mix final noise value
+            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                          dot(p2,x2), dot(p3,x3) ) );
+          }
+          uniform float uTime;
+          attribute float size;
+          varying vec3 vPosition;
+          void main() {
+
+            vec3 correctedPosition = vec3(position.x + sin(snoise(position + uTime * 0.01) + snoise(position + uTime * 0.1)),  position.y + cos(snoise(position + uTime * 0.2)) - 1.0, position.z);
+
+            vec4 mvPosition = modelViewMatrix * vec4( correctedPosition, 1.0 );
+
+
+            vPosition = position;
+
+            gl_PointSize = size * ( 1.0 / -mvPosition.z );
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `,
+        fragmentShader: `
+
+             //\tSimplex 3D Noise
+          //\tby Ian McEwan, Ashima Arts
+          //
+          vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
+          vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
+
+          float snoise(vec3 v){
+            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
+            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
+
+          // First corner
+            vec3 i  = floor(v + dot(v, C.yyy) );
+            vec3 x0 =   v - i + dot(i, C.xxx) ;
+
+          // Other corners
+            vec3 g = step(x0.yzx, x0.xyz);
+            vec3 l = 1.0 - g;
+            vec3 i1 = min( g.xyz, l.zxy );
+            vec3 i2 = max( g.xyz, l.zxy );
+
+            //  x0 = x0 - 0. + 0.0 * C
+            vec3 x1 = x0 - i1 + 1.0 * C.xxx;
+            vec3 x2 = x0 - i2 + 2.0 * C.xxx;
+            vec3 x3 = x0 - 1. + 3.0 * C.xxx;
+
+          // Permutations
+            i = mod(i, 289.0 );
+            vec4 p = permute( permute( permute(
+                       i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
+                     + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
+                     + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
+
+          // Gradients
+          // ( N*N points uniformly over a square, mapped onto an octahedron.)
+            float n_ = 1.0/7.0; // N=7
+            vec3  ns = n_ * D.wyz - D.xzx;
+
+            vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
+
+            vec4 x_ = floor(j * ns.z);
+            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
+
+            vec4 x = x_ *ns.x + ns.yyyy;
+            vec4 y = y_ *ns.x + ns.yyyy;
+            vec4 h = 1.0 - abs(x) - abs(y);
+
+            vec4 b0 = vec4( x.xy, y.xy );
+            vec4 b1 = vec4( x.zw, y.zw );
+
+            vec4 s0 = floor(b0)*2.0 + 1.0;
+            vec4 s1 = floor(b1)*2.0 + 1.0;
+            vec4 sh = -step(h, vec4(0.0));
+
+            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
+            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
+
+            vec3 p0 = vec3(a0.xy,h.x);
+            vec3 p1 = vec3(a0.zw,h.y);
+            vec3 p2 = vec3(a1.xy,h.z);
+            vec3 p3 = vec3(a1.zw,h.w);
+
+          //Normalise gradients
+            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
+            p0 *= norm.x;
+            p1 *= norm.y;
+            p2 *= norm.z;
+            p3 *= norm.w;
+
+          // Mix final noise value
+            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
+            m = m * m;
+            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
+                                          dot(p2,x2), dot(p3,x3) ) );
+          }
+          uniform float uTime;
+          varying vec3 vPosition;
+          void main() {
+
+            vec2 st = gl_PointCoord.xy;
+
+            float radius = 4.0;
+
+
+            float distanceToCenter = distance(st, vec2(0.5)) * radius;
+            float sdfCircle = clamp(1.0 - distanceToCenter, 0.0, 1.0);
+
+
+            float opacity = clamp(pow(sdfCircle, 4.0) * (snoise(vPosition + uTime) + 1.0) , 0.0, 1.0);
+
+            gl_FragColor = vec4(1.0, 0.75, 0.0, opacity);
+          }
+        `,
+      });
+      this.particles = new THREE.Points(this.geometry, this.material);
+
+      this.particles.position.z = 1;
+      experience.scene.add(this.particles);
+
+    }
+
+
+    update() {
+      this.material.uniforms.uTime.value = experience.time;
+    }
+  }
+
+
+  class Webgl {
+    constructor(props) {
+      this.props = props;
+
+      experience.init();
+      mouse.init();
+
+      this.particles = new Particles({count: 100});
+      this.particles.init();
+
+      this.init();
+      this.loop();
+
+      window.addEventListener('resize', this.resize.bind(this));
+    }
+
+    init() {
+      this.props.$wrapper.prepend(experience.renderer.domElement);
+      this.output = new Output();
+    }
+
+    resize() {
+      experience.resize();
+      this.output.resize();
+    }
+
+    render() {
+      mouse.update();
+      experience.update();
+      this.particles.update();
+      this.output.update();
+    }
+
+    loop() {
+      this.render();
+      requestAnimationFrame(this.loop.bind(this));
+    }
+  }
+
+
+  window.EventBus = new EventBus();
+
+
+  if (!window.isDev) window.isDev = false;
+
+  const webglMng = new Webgl({
+    $wrapper: document.body
+  });
+
+
+</script>
+
+</html>
