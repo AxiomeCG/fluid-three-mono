@@ -362,9 +362,9 @@ vec3 getColor(vec3 colors[3],int id) {
       vec3 redLCH = RGB_TO_LCH(redColor);
       vec3 greenLCH = RGB_TO_LCH(greenColor);
 
-      colors[0] = yellowLCH;
-      colors[1] = redLCH;
-      colors[2] = greenLCH;
+      colors[0] = yellowColor;
+      colors[1] = redColor;
+      colors[2] = greenColor;
 
       float timeInCycle = mod(uTime, 3.0 * DURATION); // Time within the 9 second cycle (3 colors x 3 seconds)
       float segment = timeInCycle / DURATION; // Normalize to find out which color segment we are in
@@ -374,22 +374,26 @@ vec3 getColor(vec3 colors[3],int id) {
       float fadeFactor = fract(segment); // Get the fractional part to determine how far we're into the current segment
 
       if (fadeFactor >= (1.0 - (FADE_TIME / DURATION))) { // If within the fade duration of the segment
-          fadeFactor = remap(fadeFactor, 1.0 - (FADE_TIME / DURATION), 1.0, 0.0, 1.0);
+          fadeFactor = clamp(remap(fadeFactor, 1.0 - (FADE_TIME / DURATION), 1.0, 0.0, 1.0), 0.0, 1.0);
       } else {
           fadeFactor = 0.0;
       }
 
-      vec3 currentColorLCH = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
+      vec3 fadeColor = vec3(1.0);
+      float whitinessFactor = clamp(1.0 - 4.0 * (fadeFactor - 0.5) * (fadeFactor - 0.5), 0.0, 1.0);
+
+      vec3 currentColor = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
+
+      currentColor = mix(currentColor, fadeColor, whitinessFactor);
+
+      vec3 velocityColor = texture2D(velocity, uv).xyz;
 
 
-       vec3 velocityColor = texture2D(velocity, uv).xyz;
-
-
-       float strength = length(velocityColor);
+      float strength = length(velocityColor);
 
 
 
-       gl_FragColor = vec4(mix(vec3(0.0), LCH_TO_RGB(currentColorLCH), clamp(pow(strength, 3.), 0., 1.)), 1.0);
+      gl_FragColor = vec4(mix(vec3(0.0), currentColor, clamp(pow(strength, 3.), 0., 1.)), 1.0);
    }
 `;
 
@@ -1791,9 +1795,9 @@ vec3 getColor(vec3 colors[3],int id) {
       vec3 redLCH = RGB_TO_LCH(redColor);
       vec3 greenLCH = RGB_TO_LCH(greenColor);
 
-      colors[0] = yellowLCH;
-      colors[1] = redLCH;
-      colors[2] = greenLCH;
+      colors[0] = yellowColor;
+      colors[1] = redColor;
+      colors[2] = greenColor;
 
       float timeInCycle = mod(uTime, 3.0 * DURATION); // Time within the 9 second cycle (3 colors x 3 seconds)
       float segment = timeInCycle / DURATION; // Normalize to find out which color segment we are in
@@ -1808,8 +1812,12 @@ vec3 getColor(vec3 colors[3],int id) {
           fadeFactor = 0.0;
       }
 
-      vec3 currentColorLCH = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
+      vec3 fadeColor = vec3(1.0);
+      float whitinessFactor = clamp(1.0 - 4.0 * (fadeFactor - 0.5) * (fadeFactor - 0.5), 0.0, 1.0);
 
+      vec3 currentColor = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
+
+      currentColor = mix(currentColor, fadeColor, whitinessFactor);
 
             float distanceToCenter = distance(st, vec2(0.5)) * radius;
             float sdfCircle = clamp(1.0 - distanceToCenter, 0.0, 1.0);
@@ -1817,7 +1825,7 @@ vec3 getColor(vec3 colors[3],int id) {
 
             float opacity = clamp(pow(sdfCircle, 4.0) * (snoise(vPosition + uTime) + 1.0) , 0.0, 1.0);
 
-            gl_FragColor = vec4(LCH_TO_RGB(currentColorLCH), opacity);
+            gl_FragColor = vec4(currentColor, opacity);
           }
         `,
       });
