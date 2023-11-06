@@ -646,6 +646,8 @@ vec3 getColor(vec3 colors[3],int id) {
 
       this.renderer.setPixelRatio(this.pixelRatio);
 
+      this.renderer.outputEncoding = THREE.sRGBEncoding;
+
       this.clock = new THREE.Clock();
       this.clock.start();
     }
