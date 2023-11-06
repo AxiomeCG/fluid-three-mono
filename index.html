@@ -59,6 +59,9 @@
   import * as THREE from 'https://unpkg.com/three@0.148.0/build/three.module.js';
   import * as dat from 'lil-gui';
 
+  function remap(value, from1, to1, from2, to2) {
+    return (value - from1) * (to2 - from2) / (to1 - from1) + from2;
+  }
 
   /** SHADER DECLARATION **/
 
@@ -713,7 +716,7 @@ vec3 getColor(vec3 colors[3],int id) {
       if (this.coords_old.x === 0 && this.coords_old.y === 0) this.diff.set(0, 0);
 
       experience.camera.rotation.y = this.coords_old.x * Math.PI * 0.02;
-      experience.camera.rotation.x = - this.coords_old.y * Math.PI * 0.02;
+      experience.camera.rotation.x = -this.coords_old.y * Math.PI * 0.02;
     }
   }
 
@@ -891,7 +894,7 @@ vec3 getColor(vec3 colors[3],int id) {
             value: new THREE.Vector2(0.0, 0.0)
           },
           scale: {
-            value: new THREE.Vector2(simProps.cursor_size, simProps.cursor_size)
+            value: new THREE.Vector2(simProps.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1))
           }
         },
       })
@@ -904,8 +907,8 @@ vec3 getColor(vec3 colors[3],int id) {
       const forceX = mouse.diff.x / 2 * props.mouse_force;
       const forceY = mouse.diff.y / 2 * props.mouse_force;
 
-      const cursorSizeX = props.cursor_size * props.cellScale.x;
-      const cursorSizeY = props.cursor_size * props.cellScale.y;
+      const cursorSizeX = props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.cellScale.x;
+      const cursorSizeY = props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.cellScale.y;
 
       const centerX = Math.min(Math.max(mouse.coords.x, -1 + cursorSizeX + props.cellScale.x * 2), 1 - cursorSizeX - props.cellScale.x * 2);
       const centerY = Math.min(Math.max(mouse.coords.y, -1 + cursorSizeY + props.cellScale.y * 2), 1 - cursorSizeY - props.cellScale.y * 2);
@@ -914,7 +917,7 @@ vec3 getColor(vec3 colors[3],int id) {
 
       uniforms.force.value.set(forceX, forceY);
       uniforms.center.value.set(centerX, centerY);
-      uniforms.scale.value.set(props.cursor_size, props.cursor_size);
+      uniforms.scale.value.set(props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1), props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1));
 
       super.update();
     }
@@ -1120,7 +1123,7 @@ vec3 getColor(vec3 colors[3],int id) {
         cursor_size: 100,
         viscous: 30,
         isBounce: false,
-        dt: 0.014,
+        dt: 0.005,
         isViscous: false,
         BFECC: true
       };
@@ -1166,7 +1169,7 @@ vec3 getColor(vec3 colors[3],int id) {
 
       this.externalForce = new ExternalForce({
         cellScale: this.cellScale,
-        cursor_size: this.options.cursor_size,
+        cursor_size: this.options.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1),
         dst: this.fbos.vel_1,
       });
 
@@ -1237,7 +1240,7 @@ vec3 getColor(vec3 colors[3],int id) {
       this.advection.update(this.options);
 
       this.externalForce.update({
-        cursor_size: this.options.cursor_size,
+        cursor_size: this.options.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1),
         mouse_force: this.options.mouse_force,
         cellScale: this.cellScale
       });
@@ -1850,7 +1853,7 @@ vec3 getColor(vec3 colors[3],int id) {
       experience.init();
       mouse.init();
 
-      this.particles = new Particles({count: 10000});
+      this.particles = new Particles({count: 5000});
       this.particles.init();
 
       this.init();
