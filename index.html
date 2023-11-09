@@ -8,331 +8,85 @@
 </head>
 <body>
 <div id="app">
-  <span id="title">CreaSpark</span>
   <canvas id="canvas"></canvas>
 </div>
 
 </body>
 
-<style>
-    @import url('https://fonts.cdnfonts.com/css/satoshi');
-
-    html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    #app {
-        position: relative;
-        width: 100%;
-        height: 100%;
-    }
-
-    #canvas {
-        position: absolute;
-        z-index: 0;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-    }
-
-    #title {
-        font-family: "Satoshi", sans-serif;
-        position: absolute;
-        z-index: 1;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-
-        font-size: 15vw;
-        color: white;
-        mix-blend-mode: difference;
-
-    }
-</style>
 
 <script type="module">
   import * as THREE from 'https://unpkg.com/three@0.148.0/build/three.module.js';
-
   function remap(v, f1, t1, f2, t2) {
     return (v - f1) * (t2 - f2) / (t1 - f1) + f2;
   }
-  const face_vert = `
-attribute vec3 position;
-uniform vec2 px;
-uniform vec2 boundarySpace;
-varying vec2 uv;
-precision highp float;
-void main(){
-vec3 pos = position;
-vec2 scale = 1.0 - boundarySpace * 2.0;
-pos.xy = pos.xy * scale;
-uv = vec2(0.5)+(pos.xy)*0.5;
-gl_Position = vec4(pos, 1.0);
-}
-`;
-
-  const line_vert = `
-attribute vec3 position;
-varying vec2 uv;
-uniform vec2 px;
-precision highp float;
-void main(){
-vec3 pos = position;
-uv = 0.5 + pos.xy * 0.5;
-vec2 n = sign(pos.xy);
-pos.xy = abs(pos.xy) - px * 1.0;
-pos.xy *= n;
-gl_Position = vec4(pos, 1.0);
-}
-  `;
-
-  const color_frag = `
-precision highp float;
-uniform sampler2D velocity;
-uniform float uTime;
+  const f_vert = `attribute vec3 position;uniform vec2 px;uniform vec2 bSpace;varying vec2 uv;precision highp float;void main(){vec3 pos = position;vec2 scale = 1. - bSpace * 2.;pos.xy = pos.xy * scale;uv = vec2(0.5)+(pos.xy)*0.5;gl_Position = vec4(pos, 1.);}`;
+  const l_vert = `attribute vec3 position;varying vec2 uv;uniform vec2 px;precision highp float;void main(){vec3 pos = position;uv = 0.5 + pos.xy * 0.5;vec2 n = sign(pos.xy);pos.xy = abs(pos.xy) - px * 1.;pos.xy *= n;gl_Position = vec4(pos, 1.);}`;
+  const c_frag = `precision highp float;uniform sampler2D velocity;uniform float uT;
 varying vec2 uv;
 #ifndef PI
 #define PI 3.14159265359
 #endif
-#ifndef TWO_PI
-#define TWO_PI 6.28318530718
+#ifndef TAU
+#define TAU 6.28318530718
 #endif
-float remap(float value, float inputMin, float inputMax, float outputMin, float outputMax) {
-    return outputMin + (value - inputMin) * (outputMax - outputMin) / (inputMax - inputMin);
-}
-const float DURATION = 4.0;
-const float FADE_TIME = 0.75;
-vec3 getColor(vec3 colors[3],int id) {
-for (int i=0; i<3; i++) {
-    if (i == id) return colors[i];
-}
-}
-void main(){
-
-vec3 colors[3];
-
-vec3 yellowColor = vec3(0.992,0.631,0.11);
-vec3 redColor = vec3(0.914,0.082,0.2);
-vec3 greenColor = vec3(0.408,0.765,0.714);
-
-colors[0] = yellowColor;
-colors[1] = redColor;
-colors[2] = greenColor;
-
-float timeInCycle = mod(uTime, 3.0 * DURATION);
-float segment = timeInCycle / DURATION;
-int currentColorIndex = int(segment);
-int nextColorIndex = int(mod(segment + 1.0, 3.0));
-
-float fadeFactor = fract(segment);
-
-if (fadeFactor >= (1.0 - (FADE_TIME / DURATION))) {
-    fadeFactor = clamp(remap(fadeFactor, 1.0 - (FADE_TIME / DURATION), 1.0, 0.0, 1.0), 0.0, 1.0);
-} else {
-    fadeFactor = 0.0;
-}
-vec3 fadeColor = vec3(1.0);
-float whitinessFactor = clamp(1.0 - 4.0 * (fadeFactor - 0.5) * (fadeFactor - 0.5), 0.0, 1.0);
-vec3 currentColor = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
-currentColor = mix(currentColor, fadeColor, whitinessFactor);
-vec3 velocityColor = texture2D(velocity, uv).xyz;
-float strength = length(velocityColor);
+float remap(float v, float iMin, float iMax, float oMin, float oMax) {return oMin + (v - iMin) * (oMax - oMin) / (iMax - iMin);}const float DUR = 4.;const float FTIME = 0.75;vec3 getC(vec3 cs[3],int id) {for (int i=0; i<3; i++) {if (i == id) return cs[i];}}
+void main(){vec3 cs[3];vec3 yCol = vec3(0.992,0.631,0.11);vec3 rCol = vec3(0.914,0.082,0.2);vec3 gCol = vec3(0.408,0.765,0.714);cs[0] = yCol;cs[1] = rCol;cs[2] = gCol;float tCyc = mod(uT, 3. * DUR);float seg = tCyc / DUR;int cIdx = int(seg);int nextIdx = int(mod(seg + 1., 3.));float fFac = fract(seg);if (fFac >= (1. - (FTIME / DUR))) {fFac = clamp(remap(fFac, 1. - (FTIME / DUR), 1., 0., 1.), 0., 1.);} else {fFac = 0.;}vec3 fCol = vec3(1.);float whFac = clamp(1. - 4. * (fFac - 0.5) * (fFac - 0.5), 0., 1.);vec3 cCol = mix(getC(cs, cIdx), getC(cs, nextIdx), clamp(fFac,0.,1.));cCol = mix(cCol, fCol, whFac);vec3 velocityColor = texture2D(velocity, uv).xyz;float strength = length(velocityColor);
 // ONLY YELLOW UNCOMMENT BELOW
-currentColor = yellowColor;
-gl_FragColor = vec4(mix(vec3(0.0), currentColor, clamp(pow(strength, 3.), 0., 1.)), 1.0);
-gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(1.0 / 2.2));
+cCol = yCol;
+gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(1. / 2.2));
 }
 `;
+const a_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 fboSize;uniform vec2 px;varying vec2 uv;void main(){vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;vec2 spot_new = uv;vec2 vel_old = texture2D(velocity, uv).xy;vec2 spot_old = spot_new - vel_old * dt * ratio;vec2 vel_new1 = texture2D(velocity, spot_old).xy;vec2 spot_new2 = spot_old + vel_new1 * dt * ratio;vec2 error = spot_new2 - spot_new;vec2 spot_new3 = spot_new - error / 2.;vec2 vel_2 = texture2D(velocity, spot_new3).xy;vec2 spot_old2 = spot_new3 - vel_2 * dt * ratio;vec2 newVel2 = texture2D(velocity, spot_old2).xy;gl_FragColor = vec4(newVel2, 0., 0.);}`;
+const d_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 px;varying vec2 uv;void main(){float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;float divergence = (x1-x0 + y1-y0) / 2.;gl_FragColor = vec4(divergence / dt);}`;
+const m_vert = `precision highp float;attribute vec3 position;attribute vec2 uv;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;void main(){vec2 pos = position.xy * scale * 2. * px + center;vUv = uv;gl_Position = vec4(pos, 0., 1.);}`;
+const eF_frag = `precision highp float;uniform vec2 force;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;void main(){vec2 circle = (vUv - 0.5) * 2.;float d = 1.-min(length(circle), 1.);d *= d;gl_FragColor = vec4(force * d, 0, 1);}`;
+const p_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D divergence;uniform vec2 px;varying vec2 uv;void main(){float p0 = texture2D(pressure, uv+vec2(px.x * 2.,  0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * 2., 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * 2. )).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * 2. )).r;float div = texture2D(divergence, uv).r;float newP = (p0 + p1 + p2 + p3) / 4. - div;gl_FragColor = vec4(newP);}`;
+const pr_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D velocity;uniform vec2 px;uniform float dt;varying vec2 uv;void main(){float step = 1.;float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;vec2 v = texture2D(velocity, uv).xy;vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.5;v = v - gradP * dt;gl_FragColor = vec4(v, 0., 1.);}`;
+const v_frag = `precision highp float;uniform sampler2D velocity;uniform sampler2D velocity_new;uniform float v;uniform vec2 px;uniform float dt;varying vec2 uv;void main(){vec2 old = texture2D(velocity, uv).xy;vec2 new0 = texture2D(velocity_new, uv + vec2(px.x * 2., 0)).xy;vec2 new1 = texture2D(velocity_new, uv - vec2(px.x * 2., 0)).xy;vec2 new2 = texture2D(velocity_new, uv + vec2(0, px.y * 2.)).xy;vec2 new3 = texture2D(velocity_new, uv - vec2(0, px.y * 2.)).xy;vec2 new = 4. * old + v * dt * (new0 + new1 + new2 + new3);new /= 4. * (1. + v * dt);gl_FragColor = vec4(new, 0., 0.);}`;
 
-  const advection_frag = `
-precision highp float;
-uniform sampler2D velocity;
-uniform float dt;
-uniform bool isBFECC;
-uniform vec2 fboSize;
-uniform vec2 px;
-varying vec2 uv;
-
-void main(){
-vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
-
-if(isBFECC == false){
-vec2 vel = texture2D(velocity, uv).xy;
-vec2 uv2 = uv - vel * dt * ratio;
-vec2 newVel = texture2D(velocity, uv2).xy;
-gl_FragColor = vec4(newVel, 0.0, 0.0);
-} else {
-vec2 spot_new = uv;
-vec2 vel_old = texture2D(velocity, uv).xy;
-vec2 spot_old = spot_new - vel_old * dt * ratio;
-vec2 vel_new1 = texture2D(velocity, spot_old).xy;
-vec2 spot_new2 = spot_old + vel_new1 * dt * ratio;
-vec2 error = spot_new2 - spot_new;
-vec2 spot_new3 = spot_new - error / 2.0;
-vec2 vel_2 = texture2D(velocity, spot_new3).xy;
-vec2 spot_old2 = spot_new3 - vel_2 * dt * ratio;
-vec2 newVel2 = texture2D(velocity, spot_old2).xy;
-gl_FragColor = vec4(newVel2, 0.0, 0.0);
-}
-}
-
-  `;
-
-
-  const divergence_frag = `
-precision highp float;
-uniform sampler2D velocity;
-uniform float dt;
-uniform vec2 px;
-varying vec2 uv;
-
-void main(){
-float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;
-float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;
-float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;
-float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;
-float divergence = (x1-x0 + y1-y0) / 2.0;
-
-gl_FragColor = vec4(divergence / dt);
-}
-`;
-
-
-const mouse_vert = `
-precision highp float;
-attribute vec3 position;
-attribute vec2 uv;
-uniform vec2 center;
-uniform vec2 scale;
-uniform vec2 px;
-varying vec2 vUv;
-void main(){
-vec2 pos = position.xy * scale * 2.0 * px + center;
-vUv = uv;
-gl_Position = vec4(pos, 0.0, 1.0);
-}
-`;
-
-  const externalForce_frag = `
-precision highp float;
-uniform vec2 force;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;
-void main(){
-vec2 circle = (vUv - 0.5) * 2.0;
-float d = 1.0-min(length(circle), 1.0);
-d *= d;
-gl_FragColor = vec4(force * d, 0, 1);
-  }
-`;
-
-
-  const poisson_frag = `
-precision highp float;
-uniform sampler2D pressure;
-uniform sampler2D divergence;
-uniform vec2 px;
-varying vec2 uv;
-void main(){
-float p0 = texture2D(pressure, uv+vec2(px.x * 2.0,  0)).r;
-float p1 = texture2D(pressure, uv-vec2(px.x * 2.0, 0)).r;
-float p2 = texture2D(pressure, uv+vec2(0, px.y * 2.0 )).r;
-float p3 = texture2D(pressure, uv-vec2(0, px.y * 2.0 )).r;
-float div = texture2D(divergence, uv).r;
-
-float newP = (p0 + p1 + p2 + p3) / 4.0 - div;
-gl_FragColor = vec4(newP);
-}
-`;
-
-  const pressure_frag = `
-precision highp float;
-uniform sampler2D pressure;
-uniform sampler2D velocity;
-uniform vec2 px;
-uniform float dt;
-varying vec2 uv;
-void main(){
-float step = 1.0;
-float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;
-float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;
-float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;
-float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;
-vec2 v = texture2D(velocity, uv).xy;
-vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.5;
-v = v - gradP * dt;
-gl_FragColor = vec4(v, 0.0, 1.0);
-    }
-`;
-
-const viscous_frag = `
-precision highp float;
-uniform sampler2D velocity;
-uniform sampler2D velocity_new;
-uniform float v;
-uniform vec2 px;
-uniform float dt;
-varying vec2 uv;
-void main(){
-vec2 old = texture2D(velocity, uv).xy;
-vec2 new0 = texture2D(velocity_new, uv + vec2(px.x * 2.0, 0)).xy;
-vec2 new1 = texture2D(velocity_new, uv - vec2(px.x * 2.0, 0)).xy;
-vec2 new2 = texture2D(velocity_new, uv + vec2(0, px.y * 2.0)).xy;
-vec2 new3 = texture2D(velocity_new, uv - vec2(0, px.y * 2.0)).xy;
-vec2 new = 4.0 * old + v * dt * (new0 + new1 + new2 + new3);
-new /= 4.0 * (1.0 + v * dt);
-gl_FragColor = vec4(new, 0.0, 0.0);
-}
-
-`;
-
-  class Experience {
+  class Exp {
     constructor() {
-      this.width = null;
-      this.height = null;
-      this.time = 0;
-      this.delta = 0;
+      this.w = null;
+      this.h = null;
+      this.t = 0;
+      this.d = 0;
       this.scene = new THREE.Scene();
       this.camera = new THREE.Camera();
       this.camera.position.z = 2;
     }
 
     init() {
-      this.pixelRatio = window.devicePixelRatio;
+      this.pRatio = window.devicePixelRatio;
       this.resize();
-      this.renderer = new THREE.WebGLRenderer({
+      this.rd = new THREE.WebGLRenderer({
         antialias: true,
         alpha: true,
         canvas: document.querySelector('#canvas')
       });
-      this.renderer.autoClear = false;
-      this.renderer.setSize(this.width, this.height);
-      this.renderer.setClearColor(0x000000);
-      this.renderer.setPixelRatio(this.pixelRatio);
-      this.renderer.outputEncoding = THREE.sRGBEncoding;
+      this.rd.autoClear = false;
+      this.rd.setSize(this.w, this.h);
+      this.rd.setClearColor(0x000000);
+      this.rd.setPixelRatio(this.pRatio);
+      this.rd.outputEncoding = THREE.sRGBEncoding;
       this.clock = new THREE.Clock();
       this.clock.start();
     }
     resize() {
-      this.width = window.innerWidth;
-      this.height = window.innerHeight;
-      if (this.renderer) this.renderer.setSize(this.width, this.height);
+      this.w = window.innerWidth;
+      this.h = window.innerHeight;
+      if (this.rd) this.rd.setSize(this.w, this.h);
     }
     update() {
-      this.delta = this.clock.getDelta();
-      this.time += this.delta;
+      this.d = this.clock.getDelta();
+      this.t += this.d;
     }
   }
-  const experience = new Experience();
+  const exp = new Exp();
   class Mouse {
     constructor() {
-      this.coords = new THREE.Vector2();
-      this.coords_old = new THREE.Vector2();
+      this.coord = new THREE.Vector2();
+      this.coord_old = new THREE.Vector2();
       this.diff = new THREE.Vector2();
-      this.timer = null;
       this.count = 0;
     }
     init() {
@@ -341,13 +95,7 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       document.body.addEventListener('touchmove', this.onDocumentTouchMove.bind(this), false);
     }
     setCoords(x, y) {
-      if (this.timer) clearTimeout(this.timer);
-      this.coords.set((x / experience.width) * 2 - 1, -(y / experience.height) * 2 + 1);
-      this.mouseMoved = true;
-      this.timer = setTimeout(() => {
-        this.mouseMoved = false;
-      }, 100);
-
+      this.coord.set((x / exp.w) * 2 - 1, -(y / exp.h) * 2 + 1);
     }
     onDocumentMouseMove(event) {
       this.setCoords(event.clientX, event.clientY);
@@ -363,53 +111,53 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       }
     }
     update() {
-      this.diff.subVectors(this.coords, this.coords_old);
-      this.coords_old.copy(this.coords);
-      if (this.coords_old.x === 0 && this.coords_old.y === 0) this.diff.set(0, 0);
-      experience.camera.rotation.y = this.coords_old.x * Math.PI * 0.02;
-      experience.camera.rotation.x = -this.coords_old.y * Math.PI * 0.02;
+      this.diff.subVectors(this.coord, this.coord_old);
+      this.coord_old.copy(this.coord);
+      if (this.coord_old.x === 0 && this.coord_old.y === 0) this.diff.set(0, 0);
+      exp.camera.rotation.y = this.coord_old.x * Math.PI * 0.02;
+      exp.camera.rotation.x = -this.coord_old.y * Math.PI * 0.02;
     }
   }
 
   const mouse = new Mouse();
 
   /** SIMULATION OF FLUIDS **/
-  class CustomShaderPass {
+  class CShaderPass {
     constructor(props) {
-      this.props = props;
-      this.uniforms = this.props.material?.uniforms;
+      this.ps = props;
+      this.us = this.ps.material?.uniforms;
     }
 
     init() {
       this.scene = new THREE.Scene();
       this.camera = new THREE.Camera();
-      if (this.uniforms) {
-        this.material = new THREE.RawShaderMaterial(this.props.material);
-        this.geometry = new THREE.PlaneGeometry(2.5, 2.5);
-        this.plane = new THREE.Mesh(this.geometry, this.material);
+      if (this.us) {
+        this.mat = new THREE.RawShaderMaterial(this.ps.material);
+        this.geo = new THREE.PlaneGeometry(2.5, 2.5);
+        this.plane = new THREE.Mesh(this.geo, this.mat);
         this.scene.add(this.plane);
       }
 
     }
 
     update() {
-      experience.renderer.setRenderTarget(this.props.output);
-      experience.renderer.render(this.scene, this.camera);
-      experience.renderer.setRenderTarget(null);
+      exp.rd.setRenderTarget(this.ps.output);
+      exp.rd.render(this.scene, this.camera);
+      exp.rd.setRenderTarget(null);
     }
   }
-  class Advection extends CustomShaderPass {
+  class Adv extends CShaderPass {
     constructor(simulationProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: advection_frag,
+          vertexShader: f_vert,
+          fragmentShader: a_frag,
           uniforms: {
-            boundarySpace: {
-              value: simulationProps.cellScale
+            bSpace: {
+              value: simulationProps.ceScale
             },
             px: {
-              value: simulationProps.cellScale
+              value: simulationProps.ceScale
             },
             fboSize: {
               value: simulationProps.fboSize
@@ -419,9 +167,6 @@ gl_FragColor = vec4(new, 0.0, 0.0);
             },
             dt: {
               value: simulationProps.dt
-            },
-            isBFECC: {
-              value: true
             }
           },
         },
@@ -454,40 +199,39 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       boundaryG.setAttribute('position', new THREE.BufferAttribute(vertices_boundary, 3));
 
       const boundaryM = new THREE.RawShaderMaterial({
-        vertexShader: line_vert,
-        fragmentShader: advection_frag,
-        uniforms: this.uniforms
+        vertexShader: l_vert,
+        fragmentShader: a_frag,
+        uniforms: this.us
       });
 
       this.line = new THREE.LineSegments(boundaryG, boundaryM);
       this.scene.add(this.line);
     }
 
-    update({dt, isBounce, BFECC}) {
+    update({dt, isB}) {
 
-      this.uniforms.dt.value = dt;
-      this.line.visible = isBounce;
-      this.uniforms.isBFECC.value = BFECC;
+      this.us.dt.value = dt;
+      this.line.visible = isB;
 
       super.update();
     }
   }
 
-  class Divergence extends CustomShaderPass {
+  class Div extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: divergence_frag,
+          vertexShader: f_vert,
+          fragmentShader: d_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             velocity: {
               value: simProps.src.texture
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             },
             dt: {
               value: simProps.dt
@@ -501,13 +245,13 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     }
 
     update({vel}) {
-      this.uniforms.velocity.value = vel.texture;
+      this.us.velocity.value = vel.texture;
       super.update();
     }
   }
 
 
-  class ExternalForce extends CustomShaderPass {
+  class ExtForce extends CShaderPass {
     constructor(simProps) {
       super({
         output: simProps.dst
@@ -523,21 +267,21 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       );
 
       const mouseM = new THREE.RawShaderMaterial({
-        vertexShader: mouse_vert,
-        fragmentShader: externalForce_frag,
+        vertexShader: m_vert,
+        fragmentShader: eF_frag,
         blending: THREE.AdditiveBlending,
         uniforms: {
           px: {
-            value: simProps.cellScale
+            value: simProps.ceScale
           },
           force: {
-            value: new THREE.Vector2(0.0, 0.0)
+            value: new THREE.Vector2(0., 0.)
           },
           center: {
-            value: new THREE.Vector2(0.0, 0.0)
+            value: new THREE.Vector2(0., 0.)
           },
           scale: {
-            value: new THREE.Vector2(simProps.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1))
+            value: new THREE.Vector2(simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1))
           }
         },
       })
@@ -549,28 +293,28 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     update(props) {
       const forceX = mouse.diff.x / 2 * props.mouse_force;
       const forceY = mouse.diff.y / 2 * props.mouse_force;
-      const cursorSizeX = props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.cellScale.x;
-      const cursorSizeY = props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.cellScale.y;
-      const centerX = Math.min(Math.max(mouse.coords.x, -1 + cursorSizeX + props.cellScale.x * 2), 1 - cursorSizeX - props.cellScale.x * 2);
-      const centerY = Math.min(Math.max(mouse.coords.y, -1 + cursorSizeY + props.cellScale.y * 2), 1 - cursorSizeY - props.cellScale.y * 2);
-      const uniforms = this.mouse.material.uniforms;
-      uniforms.force.value.set(forceX, forceY);
-      uniforms.center.value.set(centerX, centerY);
-      uniforms.scale.value.set(props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1), props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1));
+      const cursorSizeX = props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.ceScale.x;
+      const cursorSizeY = props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.ceScale.y;
+      const centerX = Math.min(Math.max(mouse.coord.x, -1 + cursorSizeX + props.ceScale.x * 2), 1 - cursorSizeX - props.ceScale.x * 2);
+      const centerY = Math.min(Math.max(mouse.coord.y, -1 + cursorSizeY + props.ceScale.y * 2), 1 - cursorSizeY - props.ceScale.y * 2);
+      const us = this.mouse.material.uniforms;
+      us.force.value.set(forceX, forceY);
+      us.center.value.set(centerX, centerY);
+      us.scale.value.set(props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1));
       super.update();
     }
 
   }
 
-  class Poisson extends CustomShaderPass {
+  class Poisson extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: poisson_frag,
+          vertexShader: f_vert,
+          fragmentShader: p_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             pressure: {
               value: simProps.dst_.texture
@@ -579,7 +323,7 @@ gl_FragColor = vec4(new, 0.0, 0.0);
               value: simProps.src.texture
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             }
           },
         },
@@ -597,15 +341,15 @@ gl_FragColor = vec4(new, 0.0, 0.0);
 
       for (var i = 0; i < iterations; i++) {
         if (i % 2 == 0) {
-          p_in = this.props.output0;
-          p_out = this.props.output1;
+          p_in = this.ps.output0;
+          p_out = this.ps.output1;
         } else {
-          p_in = this.props.output1;
-          p_out = this.props.output0;
+          p_in = this.ps.output1;
+          p_out = this.ps.output0;
         }
 
-        this.uniforms.pressure.value = p_in.texture;
-        this.props.output = p_out;
+        this.us.pressure.value = p_in.texture;
+        this.ps.output = p_out;
         super.update();
       }
 
@@ -613,15 +357,15 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     }
   }
 
-  class Pressure extends CustomShaderPass {
+  class Pressure extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: pressure_frag,
+          vertexShader: f_vert,
+          fragmentShader: pr_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             pressure: {
               value: simProps.src_p.texture
@@ -630,7 +374,7 @@ gl_FragColor = vec4(new, 0.0, 0.0);
               value: simProps.src_v.texture
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             },
             dt: {
               value: simProps.dt
@@ -644,22 +388,22 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     }
 
     update({vel, pressure}) {
-      this.uniforms.velocity.value = vel.texture;
-      this.uniforms.pressure.value = pressure.texture;
+      this.us.velocity.value = vel.texture;
+      this.us.pressure.value = pressure.texture;
       super.update();
     }
 
   }
 
-  class Viscous extends CustomShaderPass {
+  class Vis extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: viscous_frag,
+          vertexShader: f_vert,
+          fragmentShader: v_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             velocity: {
               value: simProps.src.texture
@@ -671,7 +415,7 @@ gl_FragColor = vec4(new, 0.0, 0.0);
               value: simProps.viscous,
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             },
             dt: {
               value: simProps.dt
@@ -690,19 +434,19 @@ gl_FragColor = vec4(new, 0.0, 0.0);
 
     update({viscous, iterations, dt}) {
       let fbo_in, fbo_out;
-      this.uniforms.v.value = viscous;
+      this.us.v.value = viscous;
       for (var i = 0; i < iterations; i++) {
         if (i % 2 == 0) {
-          fbo_in = this.props.output0;
-          fbo_out = this.props.output1;
+          fbo_in = this.ps.output0;
+          fbo_out = this.ps.output1;
         } else {
-          fbo_in = this.props.output1;
-          fbo_out = this.props.output0;
+          fbo_in = this.ps.output1;
+          fbo_out = this.ps.output0;
         }
 
-        this.uniforms.velocity_new.value = fbo_in.texture;
-        this.props.output = fbo_out;
-        this.uniforms.dt.value = dt;
+        this.us.velocity_new.value = fbo_in.texture;
+        this.ps.output = fbo_out;
+        this.us.dt.value = dt;
 
         super.update();
       }
@@ -710,7 +454,7 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       return fbo_out;
     }
   }
-  class Simulation {
+  class Sim {
     constructor(props) {
       this.props = props;
 
@@ -728,22 +472,21 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       };
 
       this.options = {
-        iterations_poisson: 32,
-        iterations_viscous: 32,
-        mouse_force: 40,
-        resolution: 0.5,
-        cursor_size: 55,
+        iPois: 32,
+        iVis: 32,
+        mForce: 40,
+        res: 0.5,
+        csize: 55,
         viscous: 500,
-        isBounce: false,
+        isB: false,
         dt: 0.00895,
         isViscous: false,
-        BFECC: true
       };
 
 
       this.fboSize = new THREE.Vector2();
-      this.cellScale = new THREE.Vector2();
-      this.boundarySpace = new THREE.Vector2();
+      this.ceScale = new THREE.Vector2();
+      this.bSpace = new THREE.Vector2();
 
       this.init();
     }
@@ -751,11 +494,11 @@ gl_FragColor = vec4(new, 0.0, 0.0);
 
     init() {
       this.calcSize();
-      this.createAllFBO();
+      this.createFBOs();
       this.createShaderPass();
     }
 
-    createAllFBO() {
+    createFBOs() {
       const type = (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) ? THREE.HalfFloatType : THREE.FloatType;
 
       for (let key in this.fbos) {
@@ -770,23 +513,23 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     }
 
     createShaderPass() {
-      this.advection = new Advection({
-        cellScale: this.cellScale,
+      this.advection = new Adv({
+        ceScale: this.ceScale,
         fboSize: this.fboSize,
         dt: this.options.dt,
         src: this.fbos.vel_0,
         dst: this.fbos.vel_1
       });
 
-      this.externalForce = new ExternalForce({
-        cellScale: this.cellScale,
-        cursor_size: this.options.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1),
+      this.externalForce = new ExtForce({
+        ceScale: this.ceScale,
+        csize: this.options.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
         dst: this.fbos.vel_1,
       });
 
-      this.viscous = new Viscous({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+      this.viscous = new Vis({
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         viscous: this.options.viscous,
         src: this.fbos.vel_1,
         dst: this.fbos.vel_viscous1,
@@ -794,25 +537,25 @@ gl_FragColor = vec4(new, 0.0, 0.0);
         dt: this.options.dt,
       });
 
-      this.divergence = new Divergence({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+      this.divergence = new Div({
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         src: this.fbos.vel_viscous0,
         dst: this.fbos.div,
         dt: this.options.dt,
       });
 
       this.poisson = new Poisson({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         src: this.fbos.div,
         dst: this.fbos.pressure_1,
         dst_: this.fbos.pressure_0,
       });
 
-      this.pressure = new Pressure({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+      this.pre = new Pressure({
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         src_p: this.fbos.pressure_0,
         src_v: this.fbos.vel_viscous0,
         dst: this.fbos.vel_0,
@@ -821,14 +564,14 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     }
 
     calcSize() {
-      const width = Math.round(this.options.resolution * experience.width);
-      const height = Math.round(this.options.resolution * experience.height);
+      const w = Math.round(this.options.res * exp.w);
+      const h = Math.round(this.options.res * exp.h);
 
-      const px_x = 1.0 / width;
-      const px_y = 1.0 / height;
+      const px_x = 1 / w;
+      const px_y = 1 / h;
 
-      this.cellScale.set(px_x, px_y);
-      this.fboSize.set(width, height);
+      this.ceScale.set(px_x, px_y);
+      this.fboSize.set(w, h);
     }
 
     resize() {
@@ -842,18 +585,15 @@ gl_FragColor = vec4(new, 0.0, 0.0);
 
     update() {
 
-      if (this.options.isBounce) {
-        this.boundarySpace.set(0, 0);
-      } else {
-        this.boundarySpace.copy(this.cellScale);
-      }
+
+        this.bSpace.copy(this.ceScale);
 
       this.advection.update(this.options);
 
       this.externalForce.update({
-        cursor_size: this.options.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1),
-        mouse_force: this.options.mouse_force,
-        cellScale: this.cellScale
+        csize: this.options.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
+        mouse_force: this.options.mForce,
+        ceScale: this.ceScale
       });
 
       let vel = this.fbos.vel_1;
@@ -861,18 +601,18 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       if (this.options.isViscous) {
         vel = this.viscous.update({
           viscous: this.options.viscous,
-          iterations: this.options.iterations_viscous,
+          iterations: this.options.iVis,
           dt: this.options.dt
         });
       }
 
       this.divergence.update({vel});
 
-      const pressure = this.poisson.update({
-        iterations: this.options.iterations_poisson,
+      const pre = this.poisson.update({
+        iterations: this.options.iPois,
       });
 
-      this.pressure.update({vel, pressure});
+      this.pre.update({vel, pressure: pre});
     }
   }
 
@@ -883,49 +623,49 @@ gl_FragColor = vec4(new, 0.0, 0.0);
     }
 
     init() {
-      this.simulation = new Simulation();
-      this.scene = experience.scene;
-      this.camera = experience.camera;
-      this.material = new THREE.RawShaderMaterial({
-        vertexShader: face_vert,
-        fragmentShader: color_frag,
+      this.sim = new Sim();
+      this.scene = exp.scene;
+      this.camera = exp.camera;
+      this.mat = new THREE.RawShaderMaterial({
+        vertexShader: f_vert,
+        fragmentShader: c_frag,
         uniforms: {
           velocity: {
-            value: this.simulation.fbos.vel_0.texture
+            value: this.sim.fbos.vel_0.texture
           },
-          uTime: {
+          uT: {
             value: 0
           },
-          boundarySpace: {
+          bSpace: {
             value: new THREE.Vector2()
           }
         },
       });
-      this.output = new THREE.Mesh(
+      this.o = new THREE.Mesh(
         new THREE.PlaneGeometry(2.5, 2.5),
-        this.material
+        this.mat
       );
 
-      this.scene.add(this.output);
+      this.scene.add(this.o);
     }
 
     resize() {
-      this.simulation.resize();
+      this.sim.resize();
     }
 
     render() {
-      experience.renderer.setRenderTarget(null);
-      experience.renderer.render(this.scene, this.camera);
+      exp.rd.setRenderTarget(null);
+      exp.rd.render(this.scene, this.camera);
     }
 
     update() {
-      this.material.uniforms.uTime.value = experience.clock.getElapsedTime();
-      this.simulation.update();
+      this.mat.uniforms.uT.value = exp.clock.getElapsedTime();
+      this.sim.update();
       this.render();
     }
   }
 
-  class Particles {
+  class Particle {
     constructor(props) {
       this.props = props;
     }
@@ -944,214 +684,51 @@ gl_FragColor = vec4(new, 0.0, 0.0);
       }
 
 
-      this.geometry = new THREE.BufferGeometry();
+      this.geo = new THREE.BufferGeometry();
 
-      this.geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
-      this.geometry.setAttribute('size', new THREE.BufferAttribute(size, 1));
-      this.uniforms = {
-        uTime: {
+      this.geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
+      this.geo.setAttribute('size', new THREE.BufferAttribute(size, 1));
+      this.us = {
+        uT: {
           value: 0
         },
       }
-      this.material = new THREE.ShaderMaterial({
-        uniforms: this.uniforms,
+      this.mat = new THREE.ShaderMaterial({
+        uniforms: this.us,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthTest: false,
-        vertexShader: `
-vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
-vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-
-float snoise(vec3 v){
-const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-
-vec3 i  = floor(v + dot(v, C.yyy) );
-vec3 x0 =   v - i + dot(i, C.xxx) ;
-
-vec3 g = step(x0.yzx, x0.xyz);
-vec3 l = 1.0 - g;
-vec3 i1 = min( g.xyz, l.zxy );
-vec3 i2 = max( g.xyz, l.zxy );
-
-vec3 x1 = x0 - i1 + 1.0 * C.xxx;
-vec3 x2 = x0 - i2 + 2.0 * C.xxx;
-vec3 x3 = x0 - 1. + 3.0 * C.xxx;
-
-i = mod(i, 289.0 );
-vec4 p = permute( permute( permute(
-  i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-+ i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
-+ i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-float n_ = 1.0/7.0;
-vec3  ns = n_ * D.wyz - D.xzx;
-vec4 j = p - 49.0 * floor(p * ns.z *ns.z);
-vec4 x_ = floor(j * ns.z);
-vec4 y_ = floor(j - 7.0 * x_ );
-vec4 x = x_ *ns.x + ns.yyyy;
-vec4 y = y_ *ns.x + ns.yyyy;
-vec4 h = 1.0 - abs(x) - abs(y);
-vec4 b0 = vec4( x.xy, y.xy );
-vec4 b1 = vec4( x.zw, y.zw );
-vec4 s0 = floor(b0)*2.0 + 1.0;
-vec4 s1 = floor(b1)*2.0 + 1.0;
-vec4 sh = -step(h, vec4(0.0));
-vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-vec3 p0 = vec3(a0.xy,h.x);
-vec3 p1 = vec3(a0.zw,h.y);
-vec3 p2 = vec3(a1.xy,h.z);
-vec3 p3 = vec3(a1.zw,h.w);
-vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-p0 *= norm.x;
-p1 *= norm.y;
-p2 *= norm.z;
-p3 *= norm.w;
-vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-m = m * m;
-return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
-dot(p2,x2), dot(p3,x3) ) );
-}
-uniform float uTime;
-attribute float size;
-varying vec3 vPosition;
-void main() {
-vec3 correctedPosition = vec3(position.x +  sin(snoise(position + uTime * 0.01) + snoise(position + uTime * 0.1)),  position.y + cos(snoise(position + uTime * 0.2)) - 1.0, position.z);
-vec4 mvPosition = modelViewMatrix * vec4( correctedPosition, 1.0 );
-vPosition = position;
-gl_PointSize = size * ( 1.0 / -mvPosition.z );
-gl_Position = projectionMatrix * mvPosition;
-}
+        vertexShader: `vec4 pe(vec4 x){return mod(((x*34.)+1.)*x, 289.);}vec4 tay(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}float sn(vec3 v){const vec2  C = vec2(1./6., 1./3.) ;const vec4  D = vec4(0., 0.5, 1., 2.);vec3 i  = floor(v + dot(v, C.yyy) );vec3 x0 =   v - i + dot(i, C.xxx) ;vec3 g = step(x0.yzx, x0.xyz);vec3 l = 1. - g;vec3 i1 = min( g.xyz, l.zxy );vec3 i2 = max( g.xyz, l.zxy );vec3 x1 = x0 - i1 + 1. * C.xxx;vec3 x2 = x0 - i2 + 2. * C.xxx;vec3 x3 = x0 - 1. + 3. * C.xxx;i = mod(i, 289. );vec4 p = pe( pe( pe(  i.z + vec4(0., i1.z, i2.z, 1. ))+ i.y + vec4(0., i1.y, i2.y, 1. ))+ i.x + vec4(0., i1.x, i2.x, 1. ));float n_ = 1./7.;vec3  ns = n_ * D.wyz - D.xzx;vec4 j = p - 49. * floor(p * ns.z *ns.z);vec4 x_ = floor(j * ns.z);vec4 y_ = floor(j - 7. * x_ );vec4 x = x_ *ns.x + ns.yyyy;vec4 y = y_ *ns.x + ns.yyyy;vec4 h = 1. - abs(x) - abs(y);vec4 b0 = vec4( x.xy, y.xy );vec4 b1 = vec4( x.zw, y.zw );vec4 s0 = floor(b0)*2. + 1.;vec4 s1 = floor(b1)*2. + 1.;vec4 sh = -step(h, vec4(0.));vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;vec3 p0 = vec3(a0.xy,h.x);vec3 p1 = vec3(a0.zw,h.y);vec3 p2 = vec3(a1.xy,h.z);vec3 p3 = vec3(a1.zw,h.w);vec4 norm = tay(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));p0 *= norm.x;p1 *= norm.y;p2 *= norm.z;p3 *= norm.w;vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.);m = m * m;return 42. * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),dot(p2,x2), dot(p3,x3) ) );}
+uniform float uT;attribute float size;varying vec3 vPos;
+void main() {vec3 cPos = vec3(position.x +  sin(sn(position + uT * 0.01) + sn(position + uT * 0.1)),  position.y + cos(sn(position + uT * 0.2)) - 1., position.z);vec4 mvPos = modelViewMatrix * vec4( cPos, 1. );vPos = position;gl_PointSize = size * ( 1. / -mvPos.z );gl_Position = projectionMatrix * mvPos;}
 `,
         fragmentShader: ` precision highp float;
 #ifndef PI
 #define PI 3.14159265359
 #endif
-#ifndef TWO_PI
-#define TWO_PI 6.28318530718
+#ifndef TAU
+#define TAU 6.28318530718
 #endif
-
-float remap(float value, float inputMin, float inputMax, float outputMin, float outputMax) {
-    return outputMin + (value - inputMin) * (outputMax - outputMin) / (inputMax - inputMin);
-}
-const float DURATION = 4.0;
-const float FADE_TIME = 0.75;
-vec3 getColor(vec3 colors[3],int id) {
-for (int i=0; i<3; i++) {
-if (i == id) return colors[i];
-}
-}
-vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
-vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-
-float snoise(vec3 v){
-const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-
-vec3 i  = floor(v + dot(v, C.yyy) );
-vec3 x0 =   v - i + dot(i, C.xxx) ;
-
-vec3 g = step(x0.yzx, x0.xyz);
-vec3 l = 1.0 - g;
-vec3 i1 = min( g.xyz, l.zxy );
-vec3 i2 = max( g.xyz, l.zxy );
-
-vec3 x1 = x0 - i1 + 1.0 * C.xxx;
-vec3 x2 = x0 - i2 + 2.0 * C.xxx;
-vec3 x3 = x0 - 1. + 3.0 * C.xxx;
-
-i = mod(i, 289.0 );
-vec4 p = permute( permute( permute(
-           i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-         + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
-         + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-
-float n_ = 1.0/7.0;
-vec3  ns = n_ * D.wyz - D.xzx;
-
-vec4 j = p - 49.0 * floor(p * ns.z *ns.z);
-
-vec4 x_ = floor(j * ns.z);
-vec4 y_ = floor(j - 7.0 * x_ );
-
-vec4 x = x_ *ns.x + ns.yyyy;
-vec4 y = y_ *ns.x + ns.yyyy;
-vec4 h = 1.0 - abs(x) - abs(y);
-
-vec4 b0 = vec4( x.xy, y.xy );
-vec4 b1 = vec4( x.zw, y.zw );
-
-vec4 s0 = floor(b0)*2.0 + 1.0;
-vec4 s1 = floor(b1)*2.0 + 1.0;
-vec4 sh = -step(h, vec4(0.0));
-
-vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-
-vec3 p0 = vec3(a0.xy,h.x);
-vec3 p1 = vec3(a0.zw,h.y);
-vec3 p2 = vec3(a1.xy,h.z);
-vec3 p3 = vec3(a1.zw,h.w);
-vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-p0 *= norm.x;
-p1 *= norm.y;
-p2 *= norm.z;
-p3 *= norm.w;
-vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-m = m * m;
-return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
-                              dot(p2,x2), dot(p3,x3) ) );
-}
-uniform float uTime;
-varying vec3 vPosition;
-void main() {
-vec2 st = gl_PointCoord.xy;
-float radius = 4.0;
-vec3 colors[3];
-vec3 yellowColor = vec3(0.992,0.631,0.11);
-vec3 redColor = vec3(0.914,0.082,0.2);
-vec3 greenColor = vec3(0.408,0.765,0.714);
-colors[0] = yellowColor;
-colors[1] = redColor;
-colors[2] = greenColor;
-float timeInCycle = mod(uTime, 3.0 * DURATION);
-float segment = timeInCycle / DURATION;
-int currentColorIndex = int(segment);
-int nextColorIndex = int(mod(segment + 1.0, 3.0));
-
-float fadeFactor = fract(segment);
-
-if (fadeFactor >= (1.0 - (FADE_TIME / DURATION))) {
-    fadeFactor = remap(fadeFactor, 1.0 - (FADE_TIME / DURATION), 1.0, 0.0, 1.0);
-} else {
-    fadeFactor = 0.0;
-}
-
-vec3 fadeColor = vec3(1.0);
-float whitinessFactor = clamp(1.0 - 4.0 * (fadeFactor - 0.5) * (fadeFactor - 0.5), 0.0, 1.0);
-vec3 currentColor = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
-currentColor = mix(currentColor, fadeColor, whitinessFactor);
-
+float remap(float v, float iMin, float iMax, float oMin, float oMax) {return oMin + (v - iMin) * (oMax - oMin) / (iMax - iMin);}const float DUR = 4.;const float FTIME = 0.75;vec3 getC(vec3 cs[3],int id) {for (int i=0; i<3; i++) {if (i == id) return cs[i];}}vec4 pe(vec4 x){return mod(((x*34.)+1.)*x, 289.);}vec4 tay(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}float sn(vec3 v){const vec2  C = vec2(1./6., 1./3.) ;const vec4  D = vec4(0., 0.5, 1., 2.);vec3 i  = floor(v + dot(v, C.yyy) );vec3 x0 =   v - i + dot(i, C.xxx) ;vec3 g = step(x0.yzx, x0.xyz);vec3 l = 1. - g;vec3 i1 = min( g.xyz, l.zxy );vec3 i2 = max( g.xyz, l.zxy );vec3 x1 = x0 - i1 + 1. * C.xxx;vec3 x2 = x0 - i2 + 2. * C.xxx;vec3 x3 = x0 - 1. + 3. * C.xxx;i = mod(i, 289. );vec4 p = pe( pe( pe(           i.z + vec4(0., i1.z, i2.z, 1. ))         + i.y + vec4(0., i1.y, i2.y, 1. ))         + i.x + vec4(0., i1.x, i2.x, 1. ));float n_ = 1./7.;vec3  ns = n_ * D.wyz - D.xzx;vec4 j = p - 49. * floor(p * ns.z *ns.z);vec4 x_ = floor(j * ns.z);vec4 y_ = floor(j - 7. * x_ );vec4 x = x_ *ns.x + ns.yyyy;vec4 y = y_ *ns.x + ns.yyyy;vec4 h = 1. - abs(x) - abs(y);vec4 b0 = vec4( x.xy, y.xy );vec4 b1 = vec4( x.zw, y.zw );vec4 s0 = floor(b0)*2. + 1.;vec4 s1 = floor(b1)*2. + 1.;vec4 sh = -step(h, vec4(0.));vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;vec3 p0 = vec3(a0.xy,h.x);vec3 p1 = vec3(a0.zw,h.y);vec3 p2 = vec3(a1.xy,h.z);vec3 p3 = vec3(a1.zw,h.w);vec4 norm = tay(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));p0 *= norm.x;p1 *= norm.y;p2 *= norm.z;p3 *= norm.w;vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.);m = m * m;return 42. * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),                              dot(p2,x2), dot(p3,x3) ) );}
+uniform float uT;
+varying vec3 vPos;
+void main() {vec2 st = gl_PointCoord.xy;float r = 4.;vec3 cs[3];vec3 yCol = vec3(0.992,0.631,0.11);vec3 rCol = vec3(0.914,0.082,0.2);vec3 gCol = vec3(0.408,0.765,0.714);cs[0] = yCol;cs[1] = rCol;cs[2] = gCol;float tCyc = mod(uT, 3. * DUR);float seg = tCyc / DUR;int cIdx = int(seg);int nextIdx = int(mod(seg + 1., 3.));float fFac = fract(seg);if (fFac >= (1. - (FTIME / DUR))) {fFac = remap(fFac, 1. - (FTIME / DUR), 1., 0., 1.);} else {fFac = 0.;}vec3 fCol = vec3(1.);float whFac = clamp(1. - 4. * (fFac - 0.5) * (fFac - 0.5), 0., 1.);vec3 cCol = mix(getC(cs, cIdx), getC(cs, nextIdx), clamp(fFac,0.,1.));cCol = mix(cCol, fCol, whFac);
 // ONLY YELLOW UNCOMMENT BELOW
-currentColor = yellowColor;
-float distanceToCenter = distance(st, vec2(0.5)) * radius;
-float sdfCircle = clamp(1.0 - distanceToCenter, 0.0, 1.0);
-float opacity = clamp(pow(sdfCircle, 4.0) * (snoise(vPosition + uTime) + 1.0) , 0.0, 1.0);
-
-gl_FragColor = vec4(currentColor, opacity);
+cCol = yCol;
+float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0., 1.);float op = clamp(pow(circ, 4.) * (sn(vPos + uT) + 1.) , 0., 1.);gl_FragColor = vec4(cCol, op);
           }
         `,
       });
-      this.particles = new THREE.Points(this.geometry, this.material);
+      this.ps = new THREE.Points(this.geo, this.mat);
 
-      this.particles.position.z = 1;
-      experience.scene.add(this.particles);
+      this.ps.position.z = 1;
+      exp.scene.add(this.ps);
 
     }
 
 
     update() {
-      this.material.uniforms.uTime.value = experience.time;
+      this.mat.uniforms.uT.value = exp.t;
     }
   }
 
@@ -1160,11 +737,11 @@ gl_FragColor = vec4(currentColor, opacity);
     constructor(props) {
       this.props = props;
 
-      experience.init();
+      exp.init();
       mouse.init();
 
-      this.particles = new Particles({count: 5000});
-      this.particles.init();
+      this.ps = new Particle({count: 5000});
+      this.ps.init();
 
       this.init();
       this.loop();
@@ -1173,20 +750,20 @@ gl_FragColor = vec4(currentColor, opacity);
     }
 
     init() {
-      this.props.$wrapper.prepend(experience.renderer.domElement);
-      this.output = new Output();
+      this.props.$wrapper.prepend(exp.rd.domElement);
+      this.o = new Output();
     }
 
     resize() {
-      experience.resize();
-      this.output.resize();
+      exp.resize();
+      this.o.resize();
     }
 
     render() {
       mouse.update();
-      experience.update();
-      this.particles.update();
-      this.output.update();
+      exp.update();
+      this.ps.update();
+      this.o.update();
     }
 
     loop() {
@@ -1194,9 +771,6 @@ gl_FragColor = vec4(currentColor, opacity);
       requestAnimationFrame(this.loop.bind(this));
     }
   }
-
-  if (!window.isDev) window.isDev = false;
-
   const webglMng = new Webgl({
     $wrapper: document.body
   });
