@@ -7,751 +7,171 @@
   <title>Axiome Experimentation</title>
 </head>
 <body>
-<div id="app">
   <canvas id="canvas"></canvas>
-</div>
 
 </body>
-
 <style>
-    @import url('https://fonts.cdnfonts.com/css/satoshi');
+  #canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100vh;
+  }
 
-    html, body {
-        margin: 0;
-        padding: 0;
-        width: 100%;
-        height: 100%;
-        overflow: hidden;
-    }
-
-    #app {
-        position: relative;
-        width: 100%;
-        height: 100%;
-    }
-
-    #canvas {
-        position: absolute;
-        z-index: 0;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 100%;
-    }
+  html, body {
+      margin: 0;
+      padding: 0;
+      height: 200vh;
+  }
 </style>
 
 <script type="module">
   import * as THREE from 'https://unpkg.com/three@0.148.0/build/three.module.js';
-
-  function remap(value, from1, to1, from2, to2) {
-    return (value - from1) * (to2 - from2) / (to1 - from1) + from2;
+  function remap(v, f1, t1, f2, t2) {
+    return (v - f1) * (t2 - f2) / (t1 - f1) + f2;
   }
-
-  /** SHADER DECLARATION **/
-
-  const face_vert = `
-    attribute vec3 position;
-    uniform vec2 px;
-    uniform vec2 boundarySpace;
-    varying vec2 uv;
-
-    precision highp float;
-
-    void main(){
-        vec3 pos = position;
-        vec2 scale = 1.0 - boundarySpace * 2.0;
-        pos.xy = pos.xy * scale;
-        uv = vec2(0.5)+(pos.xy)*0.5;
-        gl_Position = vec4(pos, 1.0);
-    }
-`;
-
-  const line_vert = `
-
-  attribute vec3 position;
-  varying vec2 uv;
-  uniform vec2 px;
-
-
-  precision highp float;
-
-  void main(){
-      vec3 pos = position;
-      uv = 0.5 + pos.xy * 0.5;
-      vec2 n = sign(pos.xy);
-      pos.xy = abs(pos.xy) - px * 1.0;
-      pos.xy *= n;
-      gl_Position = vec4(pos, 1.0);
-  }
-  `;
-
-  const color_frag = `
-   precision highp float;
-   uniform sampler2D velocity;
-   uniform float uTime;
-   varying vec2 uv;
-
-
+  const f_vert = `attribute vec3 position;uniform vec2 px;uniform vec2 bSpace;varying vec2 uv;precision highp float;void main(){vec3 pos = position;vec2 scale = 1. - bSpace * 2.;pos.xy = pos.xy * scale;uv = vec2(0.5)+(pos.xy)*0.5;gl_Position = vec4(pos, 1.);}`;
+  const l_vert = `attribute vec3 position;varying vec2 uv;uniform vec2 px;precision highp float;void main(){vec3 pos = position;uv = 0.5 + pos.xy * 0.5;vec2 n = sign(pos.xy);pos.xy = abs(pos.xy) - px * 1.;pos.xy *= n;gl_Position = vec4(pos, 1.);}`;
+  const c_frag = `precision highp float;uniform sampler2D velocity;uniform float uT;
+varying vec2 uv;
 #ifndef PI
 #define PI 3.14159265359
 #endif
-#ifndef TWO_PI
-#define TWO_PI 6.28318530718
+#ifndef TAU
+#define TAU 6.28318530718
 #endif
-
-// A note on white points:
-//      All the matrices shown here assume D65.
-//      If you are making something with GLSL, there is a 99% chance it will appear on a monitor, not in print.
-//      D65 is is the most common white point for computer displays, so I make it the default.
-//      You can change the WHITE variable here, but it will only afffect RGB<->XYZ and XYZ<->L*a*b* conversions.
-//      If you do end up needing to use D50 for printing or something, that should hopefully be sufficient.
-
-// ALSO: The chromatic adaptation matrices are NOT calculated on-the-fly!!!
-//       If you want to use a custom white point, you will have to do it yourself, sorry!
-
-//                          0.3127/0.3290  1.0  (1.0-0.3127-0.3290)/0.329
-const vec3 D65_WHITE = vec3(0.95045592705, 1.0, 1.08905775076);
-//                          0.3457/0.3585  1.0  (1.0-0.3457-0.3585)/0.3585
-const vec3 D50_WHITE = vec3(0.96429567643, 1.0, 0.82510460251);
-
-vec3 WHITE = D65_WHITE;
-
-// sRGB / ITU-R BT.709 spec
-const vec3 LUMA_VEC = vec3(0.2126, 0.7152, 0.0722);
-
-//========// TRANSFORMATION MATRICES //========//
-
-// Chromatic adaptation between D65<->D50
-// XYZ color space does not depend on a reference white, but all other matrices here
-// assume D65. These "restretch" XYZ to the D50 reference white so the others can sitll work with D50.
-
-// from https://www.color.org/sRGB.pdf
-const mat3 XYZ_TO_XYZ50_M = mat3(
-    1.0479298208405488, 0.022946793341019088, -0.05019222954313557,
-    0.029627815688159344, 0.990434484573249, -0.01707382502938514,
-    -0.009243058152591178, 0.015055144896577895, 0.7518742899580008
-);
-const mat3 XYZ50_TO_XYZ_M = mat3(
-    0.9554734527042182, -0.023098536874261423, 0.0632593086610217,
-    -0.028369706963208136, 1.0099954580058226, 0.021041398966943008,
-    0.012314001688319899, -0.020507696433477912, 1.3303659366080753
-);
-
-// RGB<->XYZ
-// from IEC 61966-2-1:1999/AMD1:2003 (sRGB color amendment 1)
-const mat3 RGB_TO_XYZ_M = mat3(
-    0.4124, 0.3576, 0.1805,
-    0.2126, 0.7152, 0.0722,
-    0.0193, 0.1192, 0.9505
-);
-const mat3 XYZ_TO_RGB_M = mat3(
-    3.2406255, -1.5372080, -0.4986286,
-    -0.9689307, 1.8757561, 0.0415175,
-    0.0557101, -0.2040211, 1.0569959
-);
-
-// P3Linear <-> XYZ
-const mat3 P3LINEAR_TO_XYZ_M = mat3(
-    0.4865709486482162, 0.26566769316909306, 0.1982172852343625,
-    0.2289745640697488, 0.6917385218365064, 0.079286914093745,
-    0.0000000000000000, 0.04511338185890264, 1.043944368900976
-);
-const mat3 XYZ_TO_P3LINEAR_M = mat3(
-    2.493496911941425, -0.9313836179191239, -0.40271078445071684,
-    -0.8294889695615747, 1.7626640603183463, 0.023624685841943577,
-    0.03584583024378447, -0.07617238926804182, 0.9568845240076872
-);
-
-
-// From https://www.color.org/sYCC.pdf
-// This matrix is actually also used in the ITU-R BT.601 specification
-const mat3 SRGB_TO_SYCC_M = mat3(
-    0.2990,   0.5870,  0.1140,
-    -0.1687, -0.3312,  0.5,
-    0.5,     -0.4187, -0.0813
-);
-
-const mat3 SYCC_TO_SRGB_M = mat3(
-    1.0,       -0.0000368,   1.40198757,
-    1.0000344, -0.34412512, -0.71412839,
-    0.9998228,  1.77203910, -0.00000804
-);
-
-//========// CONVERSION FUNCTIONS //========//
-
-// sRGB<->RGB
-// sRGB is standard "monitor" space, and the standard colorspace of the internet.
-// The EOTF is roughly equivalent to a gamma of 2.2, but it acts differently in low values.
-float UNCOMPAND_SRGB(float a) {
-    return (a > 0.04045) ? pow((a + 0.055) / 1.055, 2.4) : (a / 12.92);
+float remap(float v, float iMin, float iMax, float oMin, float oMax) {return oMin + (v - iMin) * (oMax - oMin) / (iMax - iMin);}const float DUR = 4.;const float FTIME = 0.75;vec3 getC(vec3 cs[3],int id) {for (int i=0; i<3; i++) {if (i == id) return cs[i];}}
+void main(){vec3 cs[3];vec3 yCol = vec3(0.992,0.631,0.11);vec3 rCol = vec3(0.914,0.082,0.2);vec3 gCol = vec3(0.408,0.765,0.714);cs[0] = yCol;cs[1] = rCol;cs[2] = gCol;float tCyc = mod(uT, 3. * DUR);float seg = tCyc / DUR;int cIdx = int(seg);int nextIdx = int(mod(seg + 1., 3.));float fFac = fract(seg);if (fFac >= (1. - (FTIME / DUR))) {fFac = clamp(remap(fFac, 1. - (FTIME / DUR), 1., 0., 1.), 0., 1.);} else {fFac = 0.;}vec3 fCol = vec3(1.);float whFac = clamp(1. - 4. * (fFac - 0.5) * (fFac - 0.5), 0., 1.);vec3 cCol = mix(getC(cs, cIdx), getC(cs, nextIdx), clamp(fFac,0.,1.));cCol = mix(cCol, fCol, whFac);vec3 velocityColor = texture2D(velocity, uv).xyz;float strength = length(velocityColor);
+// ONLY YELLOW UNCOMMENT BELOW
+cCol = yCol;
+gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 }
-vec3 SRGB_TO_RGB(vec3 srgb) {
-    return vec3(UNCOMPAND_SRGB(srgb.x), UNCOMPAND_SRGB(srgb.y), UNCOMPAND_SRGB(srgb.z));
-}
-float COMPAND_RGB(float a) {
-    return (a <= 0.0031308) ? (12.92 * a) : (1.055 * pow(a, 0.41666666666) - 0.055);
-}
-vec3 RGB_TO_SRGB(vec3 rgb) {
-    return vec3(COMPAND_RGB(rgb.x), COMPAND_RGB(rgb.y), COMPAND_RGB(rgb.z));
-}
-
-// RGB<->XYZ
-// XYZ is the classic tristimulus color space developed in 1931 by the International Commission on Illumination (CIE, confusingly).
-// Most conversions between color spaces end up going through XYZ; it is a central 'hub' in the color space landscape.
-vec3 RGB_TO_XYZ(vec3 rgb) {
-    return WHITE == D65_WHITE ? (rgb * RGB_TO_XYZ_M) : ((rgb * RGB_TO_XYZ_M) * XYZ_TO_XYZ50_M);
-}
-vec3 XYZ_TO_RGB(vec3 xyz) {
-    return WHITE == D65_WHITE ? (xyz * XYZ_TO_RGB_M) : ((xyz * XYZ50_TO_XYZ_M) * XYZ_TO_RGB_M);
-}
-
-// P3<->XYZ
-vec3 P3LINEAR_TO_XYZ(vec3 p3linear) {
-    return p3linear * P3LINEAR_TO_XYZ_M;
-}
-vec3 XYZ_TO_P3LINEAR(vec3 xyz) {
-    return xyz * XYZ_TO_P3LINEAR_M;
-}
-// Display P3 uses the sRGB TRC (gamma function).
-// It also uses the D65 white point.
-vec3 P3LINEAR_TO_DISPLAYP3(vec3 p3linear) {
-    return vec3(COMPAND_RGB(p3linear.x), COMPAND_RGB(p3linear.y), COMPAND_RGB(p3linear.z));
-}
-vec3 DISPLAYP3_TO_P3LINEAR(vec3 displayp3) {
-     return vec3(UNCOMPAND_SRGB(displayp3.x), UNCOMPAND_SRGB(displayp3.y), UNCOMPAND_SRGB(displayp3.z));
-}
-vec3 XYZ_TO_DISPLAYP3(vec3 xyz) {
-    return P3LINEAR_TO_DISPLAYP3(XYZ_TO_P3LINEAR(xyz));
-}
-vec3 DISPLAYP3_TO_XYZ(vec3 xyz) {
-    return P3LINEAR_TO_XYZ(DISPLAYP3_TO_P3LINEAR(xyz));
-}
-
-// L*a*b*/CIELAB
-// CIELAB was developed in 1976 in an attempt to make a perceptually uniform color space.
-// While it doesn't always do a great job of this (especially in the deep blues), it is still frequently used.
-float XYZ_TO_LAB_F(float x) {
-    //          (24/116)^3                         1/(3*(6/29)^2)     4/29
-    return x > 0.00885645167 ? pow(x, 0.333333333) : 7.78703703704 * x + 0.13793103448;
-}
-vec3 XYZ_TO_LAB(vec3 xyz) {
-    vec3 xyz_scaled = xyz / WHITE;
-    xyz_scaled = vec3(
-        XYZ_TO_LAB_F(xyz_scaled.x),
-        XYZ_TO_LAB_F(xyz_scaled.y),
-        XYZ_TO_LAB_F(xyz_scaled.z)
-    );
-    return vec3(
-        (116.0 * xyz_scaled.y) - 16.0,
-        500.0 * (xyz_scaled.x - xyz_scaled.y),
-        200.0 * (xyz_scaled.y - xyz_scaled.z)
-    );
-}
-float LAB_TO_XYZ_F(float x) {
-    //                                     3*(6/29)^2         4/29
-    return (x > 0.206897) ? x * x * x : (0.12841854934 * (x - 0.137931034));
-}
-vec3 LAB_TO_XYZ(vec3 Lab) {
-    float w = (Lab.x + 16.0) / 116.0;
-    return WHITE * vec3(
-        LAB_TO_XYZ_F(w + Lab.y / 500.0),
-        LAB_TO_XYZ_F(w),
-        LAB_TO_XYZ_F(w - Lab.z / 200.0)
-    );
-}
-
-// LCh
-// LCh is simply L*a*b* converted to polar coordinates.
-// Note: by convention, h is in degrees!
-vec3 LAB_TO_LCH(vec3 Lab) {
-    return vec3(
-        Lab.x,
-        sqrt(dot(Lab.yz, Lab.yz)),
-        atan(Lab.z, Lab.y) * 57.2957795131
-    );
-}
-vec3 LCH_TO_LAB(vec3 LCh) {
-    return vec3(
-        LCh.x,
-        LCh.y * cos(LCh.z * 0.01745329251),
-        LCh.y * sin(LCh.z * 0.01745329251)
-    );
-}
-
-// xyY
-// This is the color space used in chromaticity diagrams.
-// x and y encode chromaticity, while Y encodes luminance.
-vec3 XYZ_TO_XYY(vec3 xyz) {
-    return vec3(
-        xyz.x / (xyz.x + xyz.y + xyz.z),
-        xyz.y / (xyz.x + xyz.y + xyz.z),
-        xyz.y
-    );
-}
-vec3 XYY_TO_XYZ(vec3 xyY) {
-    return vec3(
-        xyY.z * xyY.x / xyY.y,
-        xyY.z,
-        xyY.z * (1.0 - xyY.x - xyY.y) / xyY.y
-    );
-}
-
-// Think of sYCC as a fast way to get from sRGB to a more perceptual color space that encodes chroma seperately from luma.
-// Output format: vec3(luma, blue-difference chroma, red-difference chroma)
-
-// sYCC is a part of the YCbCr color space family, and was formally introduced in 2003 by the ICC.
-// It uses the same transformation matrix as BT.601.
-// Note that JPEG uses the BT.601 matrix, too, just slightly modified (I assume to properly handle rounding), and it maps to [0...255] instead.
-vec3 SRGB_TO_SYCC(vec3 srgb) {
-    return srgb*SRGB_TO_SYCC_M;
-}
-vec3 SYCC_TO_SRGB(vec3 sycc) {
-    return sycc*SYCC_TO_SRGB_M;
-}
-
-// Composite function one-liners
-vec3 SRGB_TO_XYZ(vec3 srgb) { return RGB_TO_XYZ(SRGB_TO_RGB(srgb)); }
-vec3 XYZ_TO_SRGB(vec3 xyz)  { return RGB_TO_SRGB(XYZ_TO_RGB(xyz));  }
-
-vec3 SRGB_TO_LAB(vec3 srgb) { return XYZ_TO_LAB(SRGB_TO_XYZ(srgb)); }
-vec3 LAB_TO_SRGB(vec3 lab)  { return XYZ_TO_SRGB(LAB_TO_XYZ(lab));  }
-
-vec3 SRGB_TO_LCH(vec3 srgb) { return LAB_TO_LCH(SRGB_TO_LAB(srgb)); }
-vec3 LCH_TO_SRGB(vec3 lch)  { return LAB_TO_SRGB(LCH_TO_LAB(lch));  }
-
-vec3 RGB_TO_LCH(vec3 rgb) { return LAB_TO_LCH(SRGB_TO_LAB(RGB_TO_SRGB(rgb))); }
-vec3 LCH_TO_RGB(vec3 lch) { return SRGB_TO_RGB(LAB_TO_SRGB(LCH_TO_LAB(lch))); }
-
-
-float remap(float value, float inputMin, float inputMax, float outputMin, float outputMax) {
-    return outputMin + (value - inputMin) * (outputMax - outputMin) / (inputMax - inputMin);
-}
-
-const float DURATION = 4.0;
-const float FADE_TIME = 0.75;
-
-
-vec3 getColor(vec3 colors[3],int id) {
-    for (int i=0; i<3; i++) {
-        if (i == id) return colors[i];
-    }
-}
-   void main(){
-
-      vec3 colors[3];
-
-      vec3 yellowColor = vec3(0.992,0.631,0.11);
-      vec3 redColor = vec3(0.914,0.082,0.2);
-      vec3 greenColor = vec3(0.408,0.765,0.714);
-
-      // LCH
-      vec3 yellowLCH = RGB_TO_LCH(yellowColor);
-      vec3 redLCH = RGB_TO_LCH(redColor);
-      vec3 greenLCH = RGB_TO_LCH(greenColor);
-
-      colors[0] = yellowColor;
-      colors[1] = redColor;
-      colors[2] = greenColor;
-
-      float timeInCycle = mod(uTime, 3.0 * DURATION); // Time within the 9 second cycle (3 colors x 3 seconds)
-      float segment = timeInCycle / DURATION; // Normalize to find out which color segment we are in
-      int currentColorIndex = int(segment);
-      int nextColorIndex = int(mod(segment + 1.0, 3.0));
-
-      float fadeFactor = fract(segment); // Get the fractional part to determine how far we're into the current segment
-
-      if (fadeFactor >= (1.0 - (FADE_TIME / DURATION))) { // If within the fade duration of the segment
-          fadeFactor = clamp(remap(fadeFactor, 1.0 - (FADE_TIME / DURATION), 1.0, 0.0, 1.0), 0.0, 1.0);
-      } else {
-          fadeFactor = 0.0;
-      }
-
-      vec3 fadeColor = vec3(1.0);
-      float whitinessFactor = clamp(1.0 - 4.0 * (fadeFactor - 0.5) * (fadeFactor - 0.5), 0.0, 1.0);
-
-      vec3 currentColor = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
-
-      currentColor = mix(currentColor, fadeColor, whitinessFactor);
-
-      vec3 velocityColor = texture2D(velocity, uv).xyz;
-
-
-      float strength = length(velocityColor);
-
-
-
-
-      gl_FragColor = vec4(mix(vec3(0.0), currentColor, clamp(pow(strength, 4.), 0., 1.)), 1.0);
-      //gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(1.0 / 2.2));
-
-   }
 `;
+const a_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 fboSize;uniform vec2 px;varying vec2 uv;void main(){vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;vec2 spot_new = uv;vec2 vel_old = texture2D(velocity, uv).xy;vec2 spot_old = spot_new - vel_old * dt * ratio;vec2 vel_new1 = texture2D(velocity, spot_old).xy;vec2 spot_new2 = spot_old + vel_new1 * dt * ratio;vec2 error = spot_new2 - spot_new;vec2 spot_new3 = spot_new - error / 2.;vec2 vel_2 = texture2D(velocity, spot_new3).xy;vec2 spot_old2 = spot_new3 - vel_2 * dt * ratio;vec2 newVel2 = texture2D(velocity, spot_old2).xy;gl_FragColor = vec4(newVel2, 0., 0.);}`;
+const d_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 px;varying vec2 uv;void main(){float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;float divergence = (x1-x0 + y1-y0) / 2.;gl_FragColor = vec4(divergence / dt);}`;
+const m_vert = `precision highp float;attribute vec3 position;attribute vec2 uv;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;void main(){vec2 pos = position.xy * scale * 2. * px + center;vUv = uv;gl_Position = vec4(pos, 0., 1.);}`;
+const eF_frag = `precision highp float;uniform vec2 force;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;void main(){vec2 circle = (vUv - 0.5) * 2.;float d = 1.-min(length(circle), 1.);d *= d;gl_FragColor = vec4(force * d, 0, 1);}`;
+const p_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D divergence;uniform vec2 px;varying vec2 uv;void main(){float p0 = texture2D(pressure, uv+vec2(px.x * 2.,  0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * 2., 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * 2. )).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * 2. )).r;float div = texture2D(divergence, uv).r;float newP = (p0 + p1 + p2 + p3) / 4. - div;gl_FragColor = vec4(newP);}`;
+const pr_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D velocity;uniform vec2 px;uniform float dt;varying vec2 uv;void main(){float step = 1.;float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;vec2 v = texture2D(velocity, uv).xy;vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.5;v = v - gradP * dt;gl_FragColor = vec4(v, 0., 1.);}`;
+const v_frag = `precision highp float;uniform sampler2D velocity;uniform sampler2D velocity_new;uniform float v;uniform vec2 px;uniform float dt;varying vec2 uv;void main(){vec2 old = texture2D(velocity, uv).xy;vec2 new0 = texture2D(velocity_new, uv + vec2(px.x * 2., 0)).xy;vec2 new1 = texture2D(velocity_new, uv - vec2(px.x * 2., 0)).xy;vec2 new2 = texture2D(velocity_new, uv + vec2(0, px.y * 2.)).xy;vec2 new3 = texture2D(velocity_new, uv - vec2(0, px.y * 2.)).xy;vec2 new = 4. * old + v * dt * (new0 + new1 + new2 + new3);new /= 4. * (1. + v * dt);gl_FragColor = vec4(new, 0., 0.);}`;
 
-  const advection_frag = `
-  precision highp float;
-  uniform sampler2D velocity;
-  uniform float dt;
-  uniform bool isBFECC;
-  // uniform float uvScale;
-  uniform vec2 fboSize;
-  uniform vec2 px;
-  varying vec2 uv;
-
-  void main(){
-      vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;
-
-      if(isBFECC == false){
-          vec2 vel = texture2D(velocity, uv).xy;
-          vec2 uv2 = uv - vel * dt * ratio;
-          vec2 newVel = texture2D(velocity, uv2).xy;
-          gl_FragColor = vec4(newVel, 0.0, 0.0);
-      } else {
-          vec2 spot_new = uv;
-          vec2 vel_old = texture2D(velocity, uv).xy;
-          // back trace
-          vec2 spot_old = spot_new - vel_old * dt * ratio;
-          vec2 vel_new1 = texture2D(velocity, spot_old).xy;
-
-          // forward trace
-          vec2 spot_new2 = spot_old + vel_new1 * dt * ratio;
-
-          vec2 error = spot_new2 - spot_new;
-
-          vec2 spot_new3 = spot_new - error / 2.0;
-          vec2 vel_2 = texture2D(velocity, spot_new3).xy;
-
-          // back trace 2
-          vec2 spot_old2 = spot_new3 - vel_2 * dt * ratio;
-          // gl_FragColor = vec4(spot_old2, 0.0, 0.0);
-          vec2 newVel2 = texture2D(velocity, spot_old2).xy;
-          gl_FragColor = vec4(newVel2, 0.0, 0.0);
-      }
-  }
-
-  `;
-
-
-  const divergence_frag = `
-  precision highp float;
-  uniform sampler2D velocity;
-  uniform float dt;
-  uniform vec2 px;
-  varying vec2 uv;
-
-  void main(){
-      float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;
-      float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;
-      float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;
-      float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;
-      float divergence = (x1-x0 + y1-y0) / 2.0;
-
-      gl_FragColor = vec4(divergence / dt);
-  }
-`;
-
-
-  const mouse_vert = `
-  precision highp float;
-
-  attribute vec3 position;
-  attribute vec2 uv;
-  uniform vec2 center;
-  uniform vec2 scale;
-  uniform vec2 px;
-  varying vec2 vUv;
-
-  void main(){
-      vec2 pos = position.xy * scale * 2.0 * px + center;
-      vUv = uv;
-      gl_Position = vec4(pos, 0.0, 1.0);
-  }
-
-`;
-
-  const externalForce_frag = `
-
-  precision highp float;
-
-  uniform vec2 force;
-  uniform vec2 center;
-  uniform vec2 scale;
-  uniform vec2 px;
-  varying vec2 vUv;
-
-  void main(){
-      vec2 circle = (vUv - 0.5) * 2.0;
-      float d = 1.0-min(length(circle), 1.0);
-      d *= d;
-      gl_FragColor = vec4(force * d, 0, 1);
-  }
-`;
-
-
-  const poisson_frag = `
-  precision highp float;
-  uniform sampler2D pressure;
-  uniform sampler2D divergence;
-  uniform vec2 px;
-  varying vec2 uv;
-
-  void main(){
-      // poisson equation
-      float p0 = texture2D(pressure, uv+vec2(px.x * 2.0,  0)).r;
-      float p1 = texture2D(pressure, uv-vec2(px.x * 2.0, 0)).r;
-      float p2 = texture2D(pressure, uv+vec2(0, px.y * 2.0 )).r;
-      float p3 = texture2D(pressure, uv-vec2(0, px.y * 2.0 )).r;
-      float div = texture2D(divergence, uv).r;
-
-      float newP = (p0 + p1 + p2 + p3) / 4.0 - div;
-      gl_FragColor = vec4(newP);
-  }
-
-`;
-
-  const pressure_frag = `
-    precision highp float;
-    uniform sampler2D pressure;
-    uniform sampler2D velocity;
-    uniform vec2 px;
-    uniform float dt;
-    varying vec2 uv;
-
-    void main(){
-        float step = 1.0;
-
-        float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;
-        float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;
-        float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;
-        float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;
-
-        vec2 v = texture2D(velocity, uv).xy;
-        vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.5;
-        v = v - gradP * dt;
-        gl_FragColor = vec4(v, 0.0, 1.0);
-    }
-`;
-
-  const viscous_frag = `
-  precision highp float;
-  uniform sampler2D velocity;
-  uniform sampler2D velocity_new;
-  uniform float v;
-  uniform vec2 px;
-  uniform float dt;
-
-  varying vec2 uv;
-
-  void main(){
-      // poisson equation
-      vec2 old = texture2D(velocity, uv).xy;
-      vec2 new0 = texture2D(velocity_new, uv + vec2(px.x * 2.0, 0)).xy;
-      vec2 new1 = texture2D(velocity_new, uv - vec2(px.x * 2.0, 0)).xy;
-      vec2 new2 = texture2D(velocity_new, uv + vec2(0, px.y * 2.0)).xy;
-      vec2 new3 = texture2D(velocity_new, uv - vec2(0, px.y * 2.0)).xy;
-
-      vec2 new = 4.0 * old + v * dt * (new0 + new1 + new2 + new3);
-      new /= 4.0 * (1.0 + v * dt);
-
-      gl_FragColor = vec4(new, 0.0, 0.0);
-  }
-
-`;
-
-
-  /** EXPERIENCE **/
-  class EventBus {
-    /**
-     * Initialize a new event bus instance.
-     */
+  class Exp {
     constructor() {
-      this.bus = document.createElement('fakeelement');
-    }
-
-    /**
-     * Add an event listener.
-     */
-    on(event, callback) {
-      this.bus.addEventListener(event, callback);
-    }
-
-    /**
-     * Remove an event listener.
-     */
-    off(event, callback) {
-      this.bus.removeEventListener(event, callback);
-    }
-
-    /**
-     * Dispatch an event.
-     */
-    emit(event, detail = {}) {
-      this.bus.dispatchEvent(new CustomEvent(event, {detail}));
-    }
-  }
-
-  class Experience {
-    constructor() {
-      this.width = null;
-      this.height = null;
-      this.aspect = this.width / this.height;
-      this.isMobile = false;
-      this.breakpoint = 768;
-
-      this.fboWidth = null;
-      this.fboHeight = null;
-
-      this.resizeFunc = this.resize.bind(this);
-
-      this.time = 0;
-      this.delta = 0;
-
+      this.w = null;
+      this.h = null;
+      this.t = 0;
+      this.d = 0;
       this.scene = new THREE.Scene();
       this.camera = new THREE.Camera();
       this.camera.position.z = 2;
-
     }
 
     init() {
-      this.pixelRatio = window.devicePixelRatio;
-
+      this.pRatio = window.devicePixelRatio;
       this.resize();
-
-      this.renderer = new THREE.WebGLRenderer({
+      this.rd = new THREE.WebGLRenderer({
         antialias: true,
         alpha: true,
         canvas: document.querySelector('#canvas')
       });
-
-      this.renderer.autoClear = false;
-
-      this.renderer.setSize(this.width, this.height);
-
-      this.renderer.setClearColor(0x000000);
-
-      this.renderer.setPixelRatio(this.pixelRatio);
-
-      this.renderer.outputEncoding = THREE.sRGBEncoding;
-
+      this.rd.autoClear = false;
+      this.rd.setSize(this.w, this.h);
+      this.rd.setClearColor(0x000000);
+      this.rd.setPixelRatio(this.pRatio);
+      this.rd.outputEncoding = THREE.sRGBEncoding;
       this.clock = new THREE.Clock();
       this.clock.start();
     }
-
     resize() {
-      this.width = window.innerWidth; // document.body.clientWidth;
-      this.height = window.innerHeight;
-      this.aspect = this.width / this.height;
-
-      if (this.renderer) this.renderer.setSize(this.width, this.height);
+      this.w = window.innerWidth;
+      this.h = window.innerHeight;
+      if (this.rd) this.rd.setSize(this.w, this.h);
     }
-
     update() {
-      this.delta = this.clock.getDelta(); // Math.min(0.01, this.clock.getDelta());
-      this.time += this.delta;
+      this.d = this.clock.getDelta();
+      this.t += this.d;
     }
   }
-
-  const experience = new Experience();
-
-
+  const exp = new Exp();
   class Mouse {
     constructor() {
-      this.mouseMoved = false;
-      this.coords = new THREE.Vector2();
-      this.coords_old = new THREE.Vector2();
+      this.coord = new THREE.Vector2();
+      this.coord_old = new THREE.Vector2();
       this.diff = new THREE.Vector2();
-      this.timer = null;
       this.count = 0;
     }
-
     init() {
-      document.body.addEventListener('mousemove', this.onDocumentMouseMove.bind(this), false);
-      document.body.addEventListener('touchstart', this.onDocumentTouchStart.bind(this), false);
-      document.body.addEventListener('touchmove', this.onDocumentTouchMove.bind(this), false);
+      const c = document.querySelector('#canvas');
+      c.addEventListener('mousemove', this.onMouseMove.bind(this), false);
+      document.body.addEventListener('touchstart', this.onTouchStart.bind(this), false);
+      document.body.addEventListener('touchmove', this.onTouchMove.bind(this), false);
     }
-
     setCoords(x, y) {
-      if (this.timer) clearTimeout(this.timer);
-      this.coords.set((x / experience.width) * 2 - 1, -(y / experience.height) * 2 + 1);
-      this.mouseMoved = true;
-      this.timer = setTimeout(() => {
-        this.mouseMoved = false;
-      }, 100);
-
+      this.coord.set((x / exp.w) * 2 - 1, -(y / exp.h) * 2 + 1);
     }
-
-    onDocumentMouseMove(event) {
-      this.setCoords(event.clientX, event.clientY);
+    onMouseMove(event) {
+      const r = document.querySelector('#canvas').getBoundingClientRect();
+      this.setCoords(event.clientX - r.left, event.clientY - r.top);
     }
-
-    onDocumentTouchStart(event) {
+    onTouchStart(event) {
       if (event.touches.length === 1) {
-        // event.preventDefault();
         this.setCoords(event.touches[0].pageX, event.touches[0].pageY);
       }
     }
-
-    onDocumentTouchMove(event) {
+    onTouchMove(event) {
       if (event.touches.length === 1) {
-        // event.preventDefault();
-
         this.setCoords(event.touches[0].pageX, event.touches[0].pageY);
       }
     }
-
     update() {
-      this.diff.subVectors(this.coords, this.coords_old);
-      this.coords_old.copy(this.coords);
-
-      if (this.coords_old.x === 0 && this.coords_old.y === 0) this.diff.set(0, 0);
-
-      experience.camera.rotation.y = this.coords_old.x * Math.PI * 0.02;
-      experience.camera.rotation.x = -this.coords_old.y * Math.PI * 0.02;
+      this.diff.subVectors(this.coord, this.coord_old);
+      this.coord_old.copy(this.coord);
+      if (this.coord_old.x === 0 && this.coord_old.y === 0) this.diff.set(0, 0);
+      exp.camera.rotation.y = this.coord_old.x * Math.PI * 0.02;
+      exp.camera.rotation.x = -this.coord_old.y * Math.PI * 0.02;
     }
   }
 
   const mouse = new Mouse();
 
-
   /** SIMULATION OF FLUIDS **/
-
-  class CustomShaderPass {
+  class CShaderPass {
     constructor(props) {
-      this.props = props;
-      this.uniforms = this.props.material?.uniforms;
+      this.ps = props;
+      this.us = this.ps.material?.uniforms;
     }
 
     init() {
       this.scene = new THREE.Scene();
       this.camera = new THREE.Camera();
-
-      if (this.uniforms) {
-        this.material = new THREE.RawShaderMaterial(this.props.material);
-        this.geometry = new THREE.PlaneGeometry(2.5, 2.5);
-        this.plane = new THREE.Mesh(this.geometry, this.material);
+      if (this.us) {
+        this.mat = new THREE.RawShaderMaterial(this.ps.material);
+        this.geo = new THREE.PlaneGeometry(2.5, 2.5);
+        this.plane = new THREE.Mesh(this.geo, this.mat);
         this.scene.add(this.plane);
       }
 
     }
 
     update() {
-      experience.renderer.setRenderTarget(this.props.output);
-      experience.renderer.render(this.scene, this.camera);
-      experience.renderer.setRenderTarget(null);
+      exp.rd.setRenderTarget(this.ps.output);
+      exp.rd.render(this.scene, this.camera);
+      exp.rd.setRenderTarget(null);
     }
   }
-
-  class Advection extends CustomShaderPass {
+  class Adv extends CShaderPass {
     constructor(simulationProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: advection_frag,
+          vertexShader: f_vert,
+          fragmentShader: a_frag,
           uniforms: {
-            boundarySpace: {
-              value: simulationProps.cellScale
+            bSpace: {
+              value: simulationProps.ceScale
             },
             px: {
-              value: simulationProps.cellScale
+              value: simulationProps.ceScale
             },
             fboSize: {
               value: simulationProps.fboSize
@@ -761,9 +181,6 @@ vec3 getColor(vec3 colors[3],int id) {
             },
             dt: {
               value: simulationProps.dt
-            },
-            isBFECC: {
-              value: true
             }
           },
         },
@@ -781,59 +198,54 @@ vec3 getColor(vec3 colors[3],int id) {
     createBoundary() {
       const boundaryG = new THREE.BufferGeometry();
       const vertices_boundary = new Float32Array([
-        // left
         -1, -1, 0,
         -1, 1, 0,
 
-        // top
         -1, 1, 0,
         1, 1, 0,
 
-        // right
         1, 1, 0,
         1, -1, 0,
 
-        // bottom
         1, -1, 0,
         -1, -1, 0
       ]);
       boundaryG.setAttribute('position', new THREE.BufferAttribute(vertices_boundary, 3));
 
       const boundaryM = new THREE.RawShaderMaterial({
-        vertexShader: line_vert,
-        fragmentShader: advection_frag,
-        uniforms: this.uniforms
+        vertexShader: l_vert,
+        fragmentShader: a_frag,
+        uniforms: this.us
       });
 
       this.line = new THREE.LineSegments(boundaryG, boundaryM);
       this.scene.add(this.line);
     }
 
-    update({dt, isBounce, BFECC}) {
+    update({dt, isB}) {
 
-      this.uniforms.dt.value = dt;
-      this.line.visible = isBounce;
-      this.uniforms.isBFECC.value = BFECC;
+      this.us.dt.value = dt;
+      this.line.visible = isB;
 
       super.update();
     }
   }
 
-  class Divergence extends CustomShaderPass {
+  class Div extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: divergence_frag,
+          vertexShader: f_vert,
+          fragmentShader: d_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             velocity: {
               value: simProps.src.texture
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             },
             dt: {
               value: simProps.dt
@@ -847,13 +259,13 @@ vec3 getColor(vec3 colors[3],int id) {
     }
 
     update({vel}) {
-      this.uniforms.velocity.value = vel.texture;
+      this.us.velocity.value = vel.texture;
       super.update();
     }
   }
 
 
-  class ExternalForce extends CustomShaderPass {
+  class ExtForce extends CShaderPass {
     constructor(simProps) {
       super({
         output: simProps.dst
@@ -869,21 +281,21 @@ vec3 getColor(vec3 colors[3],int id) {
       );
 
       const mouseM = new THREE.RawShaderMaterial({
-        vertexShader: mouse_vert,
-        fragmentShader: externalForce_frag,
+        vertexShader: m_vert,
+        fragmentShader: eF_frag,
         blending: THREE.AdditiveBlending,
         uniforms: {
           px: {
-            value: simProps.cellScale
+            value: simProps.ceScale
           },
           force: {
-            value: new THREE.Vector2(0.0, 0.0)
+            value: new THREE.Vector2(0., 0.)
           },
           center: {
-            value: new THREE.Vector2(0.0, 0.0)
+            value: new THREE.Vector2(0., 0.)
           },
           scale: {
-            value: new THREE.Vector2(simProps.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1))
+            value: new THREE.Vector2(simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1))
           }
         },
       })
@@ -895,33 +307,28 @@ vec3 getColor(vec3 colors[3],int id) {
     update(props) {
       const forceX = mouse.diff.x / 2 * props.mouse_force;
       const forceY = mouse.diff.y / 2 * props.mouse_force;
-
-      const cursorSizeX = props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.cellScale.x;
-      const cursorSizeY = props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.cellScale.y;
-
-      const centerX = Math.min(Math.max(mouse.coords.x, -1 + cursorSizeX + props.cellScale.x * 2), 1 - cursorSizeX - props.cellScale.x * 2);
-      const centerY = Math.min(Math.max(mouse.coords.y, -1 + cursorSizeY + props.cellScale.y * 2), 1 - cursorSizeY - props.cellScale.y * 2);
-
-      const uniforms = this.mouse.material.uniforms;
-
-      uniforms.force.value.set(forceX, forceY);
-      uniforms.center.value.set(centerX, centerY);
-      uniforms.scale.value.set(props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1), props.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1));
-
+      const cursorSizeX = props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.ceScale.x;
+      const cursorSizeY = props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.ceScale.y;
+      const centerX = Math.min(Math.max(mouse.coord.x, -1 + cursorSizeX + props.ceScale.x * 2), 1 - cursorSizeX - props.ceScale.x * 2);
+      const centerY = Math.min(Math.max(mouse.coord.y, -1 + cursorSizeY + props.ceScale.y * 2), 1 - cursorSizeY - props.ceScale.y * 2);
+      const us = this.mouse.material.uniforms;
+      us.force.value.set(forceX, forceY);
+      us.center.value.set(centerX, centerY);
+      us.scale.value.set(props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1));
       super.update();
     }
 
   }
 
-  class Poisson extends CustomShaderPass {
+  class Poisson extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: poisson_frag,
+          vertexShader: f_vert,
+          fragmentShader: p_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             pressure: {
               value: simProps.dst_.texture
@@ -930,7 +337,7 @@ vec3 getColor(vec3 colors[3],int id) {
               value: simProps.src.texture
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             }
           },
         },
@@ -948,15 +355,15 @@ vec3 getColor(vec3 colors[3],int id) {
 
       for (var i = 0; i < iterations; i++) {
         if (i % 2 == 0) {
-          p_in = this.props.output0;
-          p_out = this.props.output1;
+          p_in = this.ps.output0;
+          p_out = this.ps.output1;
         } else {
-          p_in = this.props.output1;
-          p_out = this.props.output0;
+          p_in = this.ps.output1;
+          p_out = this.ps.output0;
         }
 
-        this.uniforms.pressure.value = p_in.texture;
-        this.props.output = p_out;
+        this.us.pressure.value = p_in.texture;
+        this.ps.output = p_out;
         super.update();
       }
 
@@ -964,15 +371,15 @@ vec3 getColor(vec3 colors[3],int id) {
     }
   }
 
-  class Pressure extends CustomShaderPass {
+  class Pressure extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: pressure_frag,
+          vertexShader: f_vert,
+          fragmentShader: pr_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             pressure: {
               value: simProps.src_p.texture
@@ -981,7 +388,7 @@ vec3 getColor(vec3 colors[3],int id) {
               value: simProps.src_v.texture
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             },
             dt: {
               value: simProps.dt
@@ -995,22 +402,22 @@ vec3 getColor(vec3 colors[3],int id) {
     }
 
     update({vel, pressure}) {
-      this.uniforms.velocity.value = vel.texture;
-      this.uniforms.pressure.value = pressure.texture;
+      this.us.velocity.value = vel.texture;
+      this.us.pressure.value = pressure.texture;
       super.update();
     }
 
   }
 
-  class Viscous extends CustomShaderPass {
+  class Vis extends CShaderPass {
     constructor(simProps) {
       super({
         material: {
-          vertexShader: face_vert,
-          fragmentShader: viscous_frag,
+          vertexShader: f_vert,
+          fragmentShader: v_frag,
           uniforms: {
-            boundarySpace: {
-              value: simProps.boundarySpace
+            bSpace: {
+              value: simProps.bSpace
             },
             velocity: {
               value: simProps.src.texture
@@ -1022,7 +429,7 @@ vec3 getColor(vec3 colors[3],int id) {
               value: simProps.viscous,
             },
             px: {
-              value: simProps.cellScale
+              value: simProps.ceScale
             },
             dt: {
               value: simProps.dt
@@ -1041,19 +448,19 @@ vec3 getColor(vec3 colors[3],int id) {
 
     update({viscous, iterations, dt}) {
       let fbo_in, fbo_out;
-      this.uniforms.v.value = viscous;
+      this.us.v.value = viscous;
       for (var i = 0; i < iterations; i++) {
         if (i % 2 == 0) {
-          fbo_in = this.props.output0;
-          fbo_out = this.props.output1;
+          fbo_in = this.ps.output0;
+          fbo_out = this.ps.output1;
         } else {
-          fbo_in = this.props.output1;
-          fbo_out = this.props.output0;
+          fbo_in = this.ps.output1;
+          fbo_out = this.ps.output0;
         }
 
-        this.uniforms.velocity_new.value = fbo_in.texture;
-        this.props.output = fbo_out;
-        this.uniforms.dt.value = dt;
+        this.us.velocity_new.value = fbo_in.texture;
+        this.ps.output = fbo_out;
+        this.us.dt.value = dt;
 
         super.update();
       }
@@ -1061,10 +468,7 @@ vec3 getColor(vec3 colors[3],int id) {
       return fbo_out;
     }
   }
-
-
-
-  class Simulation {
+  class Sim {
     constructor(props) {
       this.props = props;
 
@@ -1072,34 +476,31 @@ vec3 getColor(vec3 colors[3],int id) {
         vel_0: null,
         vel_1: null,
 
-        // for calc next velocity with viscous
         vel_viscous0: null,
         vel_viscous1: null,
 
-        // for calc pressure
         div: null,
 
-        // for calc poisson equation
         pressure_0: null,
         pressure_1: null,
       };
 
       this.options = {
-        iterations_poisson: 32,
-        iterations_viscous: 32,
-        mouse_force: 80,
-        resolution: 1.0,
-        cursor_size: 120,
+        iPois: 32,
+        iVis: 32,
+        mForce: 40,
+        res: 0.5,
+        csize: 60,
         viscous: 500,
-        isBounce: false,
-        dt: 0.00895,
+        isB: false,
+        dt: 0.0040,
         isViscous: false,
-        BFECC: true
       };
 
+
       this.fboSize = new THREE.Vector2();
-      this.cellScale = new THREE.Vector2();
-      this.boundarySpace = new THREE.Vector2();
+      this.ceScale = new THREE.Vector2();
+      this.bSpace = new THREE.Vector2();
 
       this.init();
     }
@@ -1107,11 +508,11 @@ vec3 getColor(vec3 colors[3],int id) {
 
     init() {
       this.calcSize();
-      this.createAllFBO();
+      this.createFBOs();
       this.createShaderPass();
     }
 
-    createAllFBO() {
+    createFBOs() {
       const type = (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) ? THREE.HalfFloatType : THREE.FloatType;
 
       for (let key in this.fbos) {
@@ -1126,23 +527,23 @@ vec3 getColor(vec3 colors[3],int id) {
     }
 
     createShaderPass() {
-      this.advection = new Advection({
-        cellScale: this.cellScale,
+      this.advection = new Adv({
+        ceScale: this.ceScale,
         fboSize: this.fboSize,
         dt: this.options.dt,
         src: this.fbos.vel_0,
         dst: this.fbos.vel_1
       });
 
-      this.externalForce = new ExternalForce({
-        cellScale: this.cellScale,
-        cursor_size: this.options.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1),
+      this.externalForce = new ExtForce({
+        ceScale: this.ceScale,
+        csize: this.options.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
         dst: this.fbos.vel_1,
       });
 
-      this.viscous = new Viscous({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+      this.viscous = new Vis({
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         viscous: this.options.viscous,
         src: this.fbos.vel_1,
         dst: this.fbos.vel_viscous1,
@@ -1150,25 +551,25 @@ vec3 getColor(vec3 colors[3],int id) {
         dt: this.options.dt,
       });
 
-      this.divergence = new Divergence({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+      this.divergence = new Div({
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         src: this.fbos.vel_viscous0,
         dst: this.fbos.div,
         dt: this.options.dt,
       });
 
       this.poisson = new Poisson({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         src: this.fbos.div,
         dst: this.fbos.pressure_1,
         dst_: this.fbos.pressure_0,
       });
 
-      this.pressure = new Pressure({
-        cellScale: this.cellScale,
-        boundarySpace: this.boundarySpace,
+      this.pre = new Pressure({
+        ceScale: this.ceScale,
+        bSpace: this.bSpace,
         src_p: this.fbos.pressure_0,
         src_v: this.fbos.vel_viscous0,
         dst: this.fbos.vel_0,
@@ -1177,14 +578,14 @@ vec3 getColor(vec3 colors[3],int id) {
     }
 
     calcSize() {
-      const width = Math.round(this.options.resolution * experience.width);
-      const height = Math.round(this.options.resolution * experience.height);
+      const w = Math.round(this.options.res * exp.w);
+      const h = Math.round(this.options.res * exp.h);
 
-      const px_x = 1.0 / width;
-      const px_y = 1.0 / height;
+      const px_x = 1 / w;
+      const px_y = 1 / h;
 
-      this.cellScale.set(px_x, px_y);
-      this.fboSize.set(width, height);
+      this.ceScale.set(px_x, px_y);
+      this.fboSize.set(w, h);
     }
 
     resize() {
@@ -1198,18 +599,15 @@ vec3 getColor(vec3 colors[3],int id) {
 
     update() {
 
-      if (this.options.isBounce) {
-        this.boundarySpace.set(0, 0);
-      } else {
-        this.boundarySpace.copy(this.cellScale);
-      }
+
+        this.bSpace.copy(this.ceScale);
 
       this.advection.update(this.options);
 
       this.externalForce.update({
-        cursor_size: this.options.cursor_size * remap(window.innerWidth, 320, 1440, 0.5, 1),
-        mouse_force: this.options.mouse_force,
-        cellScale: this.cellScale
+        csize: this.options.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
+        mouse_force: this.options.mForce,
+        ceScale: this.ceScale
       });
 
       let vel = this.fbos.vel_1;
@@ -1217,18 +615,18 @@ vec3 getColor(vec3 colors[3],int id) {
       if (this.options.isViscous) {
         vel = this.viscous.update({
           viscous: this.options.viscous,
-          iterations: this.options.iterations_viscous,
+          iterations: this.options.iVis,
           dt: this.options.dt
         });
       }
 
       this.divergence.update({vel});
 
-      const pressure = this.poisson.update({
-        iterations: this.options.iterations_poisson,
+      const pre = this.poisson.update({
+        iterations: this.options.iPois,
       });
 
-      this.pressure.update({vel, pressure});
+      this.pre.update({vel, pressure: pre});
     }
   }
 
@@ -1239,53 +637,49 @@ vec3 getColor(vec3 colors[3],int id) {
     }
 
     init() {
-      this.simulation = new Simulation();
-      this.scene = experience.scene;
-      this.camera = experience.camera;
-      this.material = new THREE.RawShaderMaterial({
-        vertexShader: face_vert,
-        fragmentShader: color_frag,
+      this.sim = new Sim();
+      this.scene = exp.scene;
+      this.camera = exp.camera;
+      this.mat = new THREE.RawShaderMaterial({
+        vertexShader: f_vert,
+        fragmentShader: c_frag,
         uniforms: {
           velocity: {
-            value: this.simulation.fbos.vel_0.texture
+            value: this.sim.fbos.vel_0.texture
           },
-          uTime: {
+          uT: {
             value: 0
           },
-          boundarySpace: {
+          bSpace: {
             value: new THREE.Vector2()
           }
         },
       });
-      this.output = new THREE.Mesh(
+      this.o = new THREE.Mesh(
         new THREE.PlaneGeometry(2.5, 2.5),
-        this.material
+        this.mat
       );
 
-      this.scene.add(this.output);
-    }
-
-    addScene(mesh) {
-      this.scene.add(mesh);
+      this.scene.add(this.o);
     }
 
     resize() {
-      this.simulation.resize();
+      this.sim.resize();
     }
 
     render() {
-      experience.renderer.setRenderTarget(null);
-      experience.renderer.render(this.scene, this.camera);
+      exp.rd.setRenderTarget(null);
+      exp.rd.render(this.scene, this.camera);
     }
 
     update() {
-      this.material.uniforms.uTime.value = experience.clock.getElapsedTime();
-      this.simulation.update();
+      this.mat.uniforms.uT.value = exp.clock.getElapsedTime();
+      this.sim.update();
       this.render();
     }
   }
 
-  class Particles {
+  class Particle {
     constructor(props) {
       this.props = props;
     }
@@ -1304,511 +698,51 @@ vec3 getColor(vec3 colors[3],int id) {
       }
 
 
-      this.geometry = new THREE.BufferGeometry();
+      this.geo = new THREE.BufferGeometry();
 
-      this.geometry.setAttribute('position', new THREE.BufferAttribute(position, 3));
-      this.geometry.setAttribute('size', new THREE.BufferAttribute(size, 1));
-      this.uniforms = {
-        uTime: {
+      this.geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
+      this.geo.setAttribute('size', new THREE.BufferAttribute(size, 1));
+      this.us = {
+        uT: {
           value: 0
         },
       }
-      this.material = new THREE.ShaderMaterial({
-        uniforms: this.uniforms,
+      this.mat = new THREE.ShaderMaterial({
+        uniforms: this.us,
         transparent: true,
         blending: THREE.AdditiveBlending,
         depthTest: false,
-        vertexShader: `
-
-
-          //\tSimplex 3D Noise
-          //\tby Ian McEwan, Ashima Arts
-          //
-          vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
-          vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-
-          float snoise(vec3 v){
-            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-
-          // First corner
-            vec3 i  = floor(v + dot(v, C.yyy) );
-            vec3 x0 =   v - i + dot(i, C.xxx) ;
-
-          // Other corners
-            vec3 g = step(x0.yzx, x0.xyz);
-            vec3 l = 1.0 - g;
-            vec3 i1 = min( g.xyz, l.zxy );
-            vec3 i2 = max( g.xyz, l.zxy );
-
-            //  x0 = x0 - 0. + 0.0 * C
-            vec3 x1 = x0 - i1 + 1.0 * C.xxx;
-            vec3 x2 = x0 - i2 + 2.0 * C.xxx;
-            vec3 x3 = x0 - 1. + 3.0 * C.xxx;
-
-          // Permutations
-            i = mod(i, 289.0 );
-            vec4 p = permute( permute( permute(
-                       i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-                     + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
-                     + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-
-          // Gradients
-          // ( N*N points uniformly over a square, mapped onto an octahedron.)
-            float n_ = 1.0/7.0; // N=7
-            vec3  ns = n_ * D.wyz - D.xzx;
-
-            vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
-
-            vec4 x_ = floor(j * ns.z);
-            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
-
-            vec4 x = x_ *ns.x + ns.yyyy;
-            vec4 y = y_ *ns.x + ns.yyyy;
-            vec4 h = 1.0 - abs(x) - abs(y);
-
-            vec4 b0 = vec4( x.xy, y.xy );
-            vec4 b1 = vec4( x.zw, y.zw );
-
-            vec4 s0 = floor(b0)*2.0 + 1.0;
-            vec4 s1 = floor(b1)*2.0 + 1.0;
-            vec4 sh = -step(h, vec4(0.0));
-
-            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-
-            vec3 p0 = vec3(a0.xy,h.x);
-            vec3 p1 = vec3(a0.zw,h.y);
-            vec3 p2 = vec3(a1.xy,h.z);
-            vec3 p3 = vec3(a1.zw,h.w);
-
-          //Normalise gradients
-            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-            p0 *= norm.x;
-            p1 *= norm.y;
-            p2 *= norm.z;
-            p3 *= norm.w;
-
-          // Mix final noise value
-            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-            m = m * m;
-            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
-                                          dot(p2,x2), dot(p3,x3) ) );
-          }
-          uniform float uTime;
-          attribute float size;
-          varying vec3 vPosition;
-          void main() {
-
-            vec3 correctedPosition = vec3(position.x +  sin(snoise(position + uTime * 0.01) + snoise(position + uTime * 0.1)),  position.y + cos(snoise(position + uTime * 0.2)) - 1.0, position.z);
-
-            vec4 mvPosition = modelViewMatrix * vec4( correctedPosition, 1.0 );
-
-
-            vPosition = position;
-
-            gl_PointSize = size * ( 1.0 / -mvPosition.z );
-            gl_Position = projectionMatrix * mvPosition;
-          }
-        `,
-        fragmentShader: `
-
-
-           precision highp float;
-
-
+        vertexShader: `vec4 pe(vec4 x){return mod(((x*34.)+1.)*x, 289.);}vec4 tay(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}float sn(vec3 v){const vec2  C = vec2(1./6., 1./3.) ;const vec4  D = vec4(0., 0.5, 1., 2.);vec3 i  = floor(v + dot(v, C.yyy) );vec3 x0 =   v - i + dot(i, C.xxx) ;vec3 g = step(x0.yzx, x0.xyz);vec3 l = 1. - g;vec3 i1 = min( g.xyz, l.zxy );vec3 i2 = max( g.xyz, l.zxy );vec3 x1 = x0 - i1 + 1. * C.xxx;vec3 x2 = x0 - i2 + 2. * C.xxx;vec3 x3 = x0 - 1. + 3. * C.xxx;i = mod(i, 289. );vec4 p = pe( pe( pe(  i.z + vec4(0., i1.z, i2.z, 1. ))+ i.y + vec4(0., i1.y, i2.y, 1. ))+ i.x + vec4(0., i1.x, i2.x, 1. ));float n_ = 1./7.;vec3  ns = n_ * D.wyz - D.xzx;vec4 j = p - 49. * floor(p * ns.z *ns.z);vec4 x_ = floor(j * ns.z);vec4 y_ = floor(j - 7. * x_ );vec4 x = x_ *ns.x + ns.yyyy;vec4 y = y_ *ns.x + ns.yyyy;vec4 h = 1. - abs(x) - abs(y);vec4 b0 = vec4( x.xy, y.xy );vec4 b1 = vec4( x.zw, y.zw );vec4 s0 = floor(b0)*2. + 1.;vec4 s1 = floor(b1)*2. + 1.;vec4 sh = -step(h, vec4(0.));vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;vec3 p0 = vec3(a0.xy,h.x);vec3 p1 = vec3(a0.zw,h.y);vec3 p2 = vec3(a1.xy,h.z);vec3 p3 = vec3(a1.zw,h.w);vec4 norm = tay(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));p0 *= norm.x;p1 *= norm.y;p2 *= norm.z;p3 *= norm.w;vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.);m = m * m;return 42. * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),dot(p2,x2), dot(p3,x3) ) );}
+uniform float uT;attribute float size;varying vec3 vPos;
+void main() {vec3 cPos = vec3(position.x +  sin(sn(position + uT * 0.01) + sn(position + uT * 0.1)),  position.y + cos(sn(position + uT * 0.2)) - 1., position.z);vec4 mvPos = modelViewMatrix * vec4( cPos, 1. );vPos = position;gl_PointSize = size * ( 1. / -mvPos.z );gl_Position = projectionMatrix * mvPos;}
+`,
+        fragmentShader: ` precision highp float;
 #ifndef PI
 #define PI 3.14159265359
 #endif
-#ifndef TWO_PI
-#define TWO_PI 6.28318530718
+#ifndef TAU
+#define TAU 6.28318530718
 #endif
-
-// A note on white points:
-//      All the matrices shown here assume D65.
-//      If you are making something with GLSL, there is a 99% chance it will appear on a monitor, not in print.
-//      D65 is is the most common white point for computer displays, so I make it the default.
-//      You can change the WHITE variable here, but it will only afffect RGB<->XYZ and XYZ<->L*a*b* conversions.
-//      If you do end up needing to use D50 for printing or something, that should hopefully be sufficient.
-
-// ALSO: The chromatic adaptation matrices are NOT calculated on-the-fly!!!
-//       If you want to use a custom white point, you will have to do it yourself, sorry!
-
-//                          0.3127/0.3290  1.0  (1.0-0.3127-0.3290)/0.329
-const vec3 D65_WHITE = vec3(0.95045592705, 1.0, 1.08905775076);
-//                          0.3457/0.3585  1.0  (1.0-0.3457-0.3585)/0.3585
-const vec3 D50_WHITE = vec3(0.96429567643, 1.0, 0.82510460251);
-
-vec3 WHITE = D65_WHITE;
-
-// sRGB / ITU-R BT.709 spec
-const vec3 LUMA_VEC = vec3(0.2126, 0.7152, 0.0722);
-
-//========// TRANSFORMATION MATRICES //========//
-
-// Chromatic adaptation between D65<->D50
-// XYZ color space does not depend on a reference white, but all other matrices here
-// assume D65. These "restretch" XYZ to the D50 reference white so the others can sitll work with D50.
-
-// from https://www.color.org/sRGB.pdf
-const mat3 XYZ_TO_XYZ50_M = mat3(
-    1.0479298208405488, 0.022946793341019088, -0.05019222954313557,
-    0.029627815688159344, 0.990434484573249, -0.01707382502938514,
-    -0.009243058152591178, 0.015055144896577895, 0.7518742899580008
-);
-const mat3 XYZ50_TO_XYZ_M = mat3(
-    0.9554734527042182, -0.023098536874261423, 0.0632593086610217,
-    -0.028369706963208136, 1.0099954580058226, 0.021041398966943008,
-    0.012314001688319899, -0.020507696433477912, 1.3303659366080753
-);
-
-// RGB<->XYZ
-// from IEC 61966-2-1:1999/AMD1:2003 (sRGB color amendment 1)
-const mat3 RGB_TO_XYZ_M = mat3(
-    0.4124, 0.3576, 0.1805,
-    0.2126, 0.7152, 0.0722,
-    0.0193, 0.1192, 0.9505
-);
-const mat3 XYZ_TO_RGB_M = mat3(
-    3.2406255, -1.5372080, -0.4986286,
-    -0.9689307, 1.8757561, 0.0415175,
-    0.0557101, -0.2040211, 1.0569959
-);
-
-// P3Linear <-> XYZ
-const mat3 P3LINEAR_TO_XYZ_M = mat3(
-    0.4865709486482162, 0.26566769316909306, 0.1982172852343625,
-    0.2289745640697488, 0.6917385218365064, 0.079286914093745,
-    0.0000000000000000, 0.04511338185890264, 1.043944368900976
-);
-const mat3 XYZ_TO_P3LINEAR_M = mat3(
-    2.493496911941425, -0.9313836179191239, -0.40271078445071684,
-    -0.8294889695615747, 1.7626640603183463, 0.023624685841943577,
-    0.03584583024378447, -0.07617238926804182, 0.9568845240076872
-);
-
-
-// From https://www.color.org/sYCC.pdf
-// This matrix is actually also used in the ITU-R BT.601 specification
-const mat3 SRGB_TO_SYCC_M = mat3(
-    0.2990,   0.5870,  0.1140,
-    -0.1687, -0.3312,  0.5,
-    0.5,     -0.4187, -0.0813
-);
-
-const mat3 SYCC_TO_SRGB_M = mat3(
-    1.0,       -0.0000368,   1.40198757,
-    1.0000344, -0.34412512, -0.71412839,
-    0.9998228,  1.77203910, -0.00000804
-);
-
-//========// CONVERSION FUNCTIONS //========//
-
-// sRGB<->RGB
-// sRGB is standard "monitor" space, and the standard colorspace of the internet.
-// The EOTF is roughly equivalent to a gamma of 2.2, but it acts differently in low values.
-float UNCOMPAND_SRGB(float a) {
-    return (a > 0.04045) ? pow((a + 0.055) / 1.055, 2.4) : (a / 12.92);
-}
-vec3 SRGB_TO_RGB(vec3 srgb) {
-    return vec3(UNCOMPAND_SRGB(srgb.x), UNCOMPAND_SRGB(srgb.y), UNCOMPAND_SRGB(srgb.z));
-}
-float COMPAND_RGB(float a) {
-    return (a <= 0.0031308) ? (12.92 * a) : (1.055 * pow(a, 0.41666666666) - 0.055);
-}
-vec3 RGB_TO_SRGB(vec3 rgb) {
-    return vec3(COMPAND_RGB(rgb.x), COMPAND_RGB(rgb.y), COMPAND_RGB(rgb.z));
-}
-
-// RGB<->XYZ
-// XYZ is the classic tristimulus color space developed in 1931 by the International Commission on Illumination (CIE, confusingly).
-// Most conversions between color spaces end up going through XYZ; it is a central 'hub' in the color space landscape.
-vec3 RGB_TO_XYZ(vec3 rgb) {
-    return WHITE == D65_WHITE ? (rgb * RGB_TO_XYZ_M) : ((rgb * RGB_TO_XYZ_M) * XYZ_TO_XYZ50_M);
-}
-vec3 XYZ_TO_RGB(vec3 xyz) {
-    return WHITE == D65_WHITE ? (xyz * XYZ_TO_RGB_M) : ((xyz * XYZ50_TO_XYZ_M) * XYZ_TO_RGB_M);
-}
-
-// P3<->XYZ
-vec3 P3LINEAR_TO_XYZ(vec3 p3linear) {
-    return p3linear * P3LINEAR_TO_XYZ_M;
-}
-vec3 XYZ_TO_P3LINEAR(vec3 xyz) {
-    return xyz * XYZ_TO_P3LINEAR_M;
-}
-// Display P3 uses the sRGB TRC (gamma function).
-// It also uses the D65 white point.
-vec3 P3LINEAR_TO_DISPLAYP3(vec3 p3linear) {
-    return vec3(COMPAND_RGB(p3linear.x), COMPAND_RGB(p3linear.y), COMPAND_RGB(p3linear.z));
-}
-vec3 DISPLAYP3_TO_P3LINEAR(vec3 displayp3) {
-     return vec3(UNCOMPAND_SRGB(displayp3.x), UNCOMPAND_SRGB(displayp3.y), UNCOMPAND_SRGB(displayp3.z));
-}
-vec3 XYZ_TO_DISPLAYP3(vec3 xyz) {
-    return P3LINEAR_TO_DISPLAYP3(XYZ_TO_P3LINEAR(xyz));
-}
-vec3 DISPLAYP3_TO_XYZ(vec3 xyz) {
-    return P3LINEAR_TO_XYZ(DISPLAYP3_TO_P3LINEAR(xyz));
-}
-
-// L*a*b*/CIELAB
-// CIELAB was developed in 1976 in an attempt to make a perceptually uniform color space.
-// While it doesn't always do a great job of this (especially in the deep blues), it is still frequently used.
-float XYZ_TO_LAB_F(float x) {
-    //          (24/116)^3                         1/(3*(6/29)^2)     4/29
-    return x > 0.00885645167 ? pow(x, 0.333333333) : 7.78703703704 * x + 0.13793103448;
-}
-vec3 XYZ_TO_LAB(vec3 xyz) {
-    vec3 xyz_scaled = xyz / WHITE;
-    xyz_scaled = vec3(
-        XYZ_TO_LAB_F(xyz_scaled.x),
-        XYZ_TO_LAB_F(xyz_scaled.y),
-        XYZ_TO_LAB_F(xyz_scaled.z)
-    );
-    return vec3(
-        (116.0 * xyz_scaled.y) - 16.0,
-        500.0 * (xyz_scaled.x - xyz_scaled.y),
-        200.0 * (xyz_scaled.y - xyz_scaled.z)
-    );
-}
-float LAB_TO_XYZ_F(float x) {
-    //                                     3*(6/29)^2         4/29
-    return (x > 0.206897) ? x * x * x : (0.12841854934 * (x - 0.137931034));
-}
-vec3 LAB_TO_XYZ(vec3 Lab) {
-    float w = (Lab.x + 16.0) / 116.0;
-    return WHITE * vec3(
-        LAB_TO_XYZ_F(w + Lab.y / 500.0),
-        LAB_TO_XYZ_F(w),
-        LAB_TO_XYZ_F(w - Lab.z / 200.0)
-    );
-}
-
-// LCh
-// LCh is simply L*a*b* converted to polar coordinates.
-// Note: by convention, h is in degrees!
-vec3 LAB_TO_LCH(vec3 Lab) {
-    return vec3(
-        Lab.x,
-        sqrt(dot(Lab.yz, Lab.yz)),
-        atan(Lab.z, Lab.y) * 57.2957795131
-    );
-}
-vec3 LCH_TO_LAB(vec3 LCh) {
-    return vec3(
-        LCh.x,
-        LCh.y * cos(LCh.z * 0.01745329251),
-        LCh.y * sin(LCh.z * 0.01745329251)
-    );
-}
-
-// xyY
-// This is the color space used in chromaticity diagrams.
-// x and y encode chromaticity, while Y encodes luminance.
-vec3 XYZ_TO_XYY(vec3 xyz) {
-    return vec3(
-        xyz.x / (xyz.x + xyz.y + xyz.z),
-        xyz.y / (xyz.x + xyz.y + xyz.z),
-        xyz.y
-    );
-}
-vec3 XYY_TO_XYZ(vec3 xyY) {
-    return vec3(
-        xyY.z * xyY.x / xyY.y,
-        xyY.z,
-        xyY.z * (1.0 - xyY.x - xyY.y) / xyY.y
-    );
-}
-
-// Think of sYCC as a fast way to get from sRGB to a more perceptual color space that encodes chroma seperately from luma.
-// Output format: vec3(luma, blue-difference chroma, red-difference chroma)
-
-// sYCC is a part of the YCbCr color space family, and was formally introduced in 2003 by the ICC.
-// It uses the same transformation matrix as BT.601.
-// Note that JPEG uses the BT.601 matrix, too, just slightly modified (I assume to properly handle rounding), and it maps to [0...255] instead.
-vec3 SRGB_TO_SYCC(vec3 srgb) {
-    return srgb*SRGB_TO_SYCC_M;
-}
-vec3 SYCC_TO_SRGB(vec3 sycc) {
-    return sycc*SYCC_TO_SRGB_M;
-}
-
-// Composite function one-liners
-vec3 SRGB_TO_XYZ(vec3 srgb) { return RGB_TO_XYZ(SRGB_TO_RGB(srgb)); }
-vec3 XYZ_TO_SRGB(vec3 xyz)  { return RGB_TO_SRGB(XYZ_TO_RGB(xyz));  }
-
-vec3 SRGB_TO_LAB(vec3 srgb) { return XYZ_TO_LAB(SRGB_TO_XYZ(srgb)); }
-vec3 LAB_TO_SRGB(vec3 lab)  { return XYZ_TO_SRGB(LAB_TO_XYZ(lab));  }
-
-vec3 SRGB_TO_LCH(vec3 srgb) { return LAB_TO_LCH(SRGB_TO_LAB(srgb)); }
-vec3 LCH_TO_SRGB(vec3 lch)  { return LAB_TO_SRGB(LCH_TO_LAB(lch));  }
-
-vec3 RGB_TO_LCH(vec3 rgb) { return LAB_TO_LCH(SRGB_TO_LAB(RGB_TO_SRGB(rgb))); }
-vec3 LCH_TO_RGB(vec3 lch) { return SRGB_TO_RGB(LAB_TO_SRGB(LCH_TO_LAB(lch))); }
-
-
-float remap(float value, float inputMin, float inputMax, float outputMin, float outputMax) {
-    return outputMin + (value - inputMin) * (outputMax - outputMin) / (inputMax - inputMin);
-}
-
-const float DURATION = 4.0;
-const float FADE_TIME = 0.75;
-
-
-vec3 getColor(vec3 colors[3],int id) {
-    for (int i=0; i<3; i++) {
-        if (i == id) return colors[i];
-    }
-}
-
-
-
-
-
-
-
-
-
-
-             //\tSimplex 3D Noise
-          //\tby Ian McEwan, Ashima Arts
-          //
-          vec4 permute(vec4 x){return mod(((x*34.0)+1.0)*x, 289.0);}
-          vec4 taylorInvSqrt(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}
-
-          float snoise(vec3 v){
-            const vec2  C = vec2(1.0/6.0, 1.0/3.0) ;
-            const vec4  D = vec4(0.0, 0.5, 1.0, 2.0);
-
-          // First corner
-            vec3 i  = floor(v + dot(v, C.yyy) );
-            vec3 x0 =   v - i + dot(i, C.xxx) ;
-
-          // Other corners
-            vec3 g = step(x0.yzx, x0.xyz);
-            vec3 l = 1.0 - g;
-            vec3 i1 = min( g.xyz, l.zxy );
-            vec3 i2 = max( g.xyz, l.zxy );
-
-            //  x0 = x0 - 0. + 0.0 * C
-            vec3 x1 = x0 - i1 + 1.0 * C.xxx;
-            vec3 x2 = x0 - i2 + 2.0 * C.xxx;
-            vec3 x3 = x0 - 1. + 3.0 * C.xxx;
-
-          // Permutations
-            i = mod(i, 289.0 );
-            vec4 p = permute( permute( permute(
-                       i.z + vec4(0.0, i1.z, i2.z, 1.0 ))
-                     + i.y + vec4(0.0, i1.y, i2.y, 1.0 ))
-                     + i.x + vec4(0.0, i1.x, i2.x, 1.0 ));
-
-          // Gradients
-          // ( N*N points uniformly over a square, mapped onto an octahedron.)
-            float n_ = 1.0/7.0; // N=7
-            vec3  ns = n_ * D.wyz - D.xzx;
-
-            vec4 j = p - 49.0 * floor(p * ns.z *ns.z);  //  mod(p,N*N)
-
-            vec4 x_ = floor(j * ns.z);
-            vec4 y_ = floor(j - 7.0 * x_ );    // mod(j,N)
-
-            vec4 x = x_ *ns.x + ns.yyyy;
-            vec4 y = y_ *ns.x + ns.yyyy;
-            vec4 h = 1.0 - abs(x) - abs(y);
-
-            vec4 b0 = vec4( x.xy, y.xy );
-            vec4 b1 = vec4( x.zw, y.zw );
-
-            vec4 s0 = floor(b0)*2.0 + 1.0;
-            vec4 s1 = floor(b1)*2.0 + 1.0;
-            vec4 sh = -step(h, vec4(0.0));
-
-            vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;
-            vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;
-
-            vec3 p0 = vec3(a0.xy,h.x);
-            vec3 p1 = vec3(a0.zw,h.y);
-            vec3 p2 = vec3(a1.xy,h.z);
-            vec3 p3 = vec3(a1.zw,h.w);
-
-          //Normalise gradients
-            vec4 norm = taylorInvSqrt(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));
-            p0 *= norm.x;
-            p1 *= norm.y;
-            p2 *= norm.z;
-            p3 *= norm.w;
-
-          // Mix final noise value
-            vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.0);
-            m = m * m;
-            return 42.0 * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),
-                                          dot(p2,x2), dot(p3,x3) ) );
-          }
-          uniform float uTime;
-          varying vec3 vPosition;
-          void main() {
-
-            vec2 st = gl_PointCoord.xy;
-
-            float radius = 4.0;
-
-
-              vec3 colors[3];
-
-      vec3 yellowColor = vec3(0.992,0.631,0.11);
-      vec3 redColor = vec3(0.914,0.082,0.2);
-      vec3 greenColor = vec3(0.408,0.765,0.714);
-
-      // LCH
-      vec3 yellowLCH = RGB_TO_LCH(yellowColor);
-      vec3 redLCH = RGB_TO_LCH(redColor);
-      vec3 greenLCH = RGB_TO_LCH(greenColor);
-
-      colors[0] = yellowColor;
-      colors[1] = redColor;
-      colors[2] = greenColor;
-
-      float timeInCycle = mod(uTime, 3.0 * DURATION); // Time within the 9 second cycle (3 colors x 3 seconds)
-      float segment = timeInCycle / DURATION; // Normalize to find out which color segment we are in
-      int currentColorIndex = int(segment);
-      int nextColorIndex = int(mod(segment + 1.0, 3.0));
-
-      float fadeFactor = fract(segment); // Get the fractional part to determine how far we're into the current segment
-
-      if (fadeFactor >= (1.0 - (FADE_TIME / DURATION))) { // If within the fade duration of the segment
-          fadeFactor = remap(fadeFactor, 1.0 - (FADE_TIME / DURATION), 1.0, 0.0, 1.0);
-      } else {
-          fadeFactor = 0.0;
-      }
-
-      vec3 fadeColor = vec3(1.0);
-      float whitinessFactor = clamp(1.0 - 4.0 * (fadeFactor - 0.5) * (fadeFactor - 0.5), 0.0, 1.0);
-
-      vec3 currentColor = mix(getColor(colors, currentColorIndex), getColor(colors, nextColorIndex), clamp(fadeFactor,0.0,1.0));
-
-      currentColor = mix(currentColor, fadeColor, whitinessFactor);
-
-            float distanceToCenter = distance(st, vec2(0.5)) * radius;
-            float sdfCircle = clamp(1.0 - distanceToCenter, 0.0, 1.0);
-
-
-            float opacity = clamp(pow(sdfCircle, 4.0) * (snoise(vPosition + uTime) + 1.0) , 0.0, 1.0);
-
-            gl_FragColor = vec4(currentColor, opacity);
+float remap(float v, float iMin, float iMax, float oMin, float oMax) {return oMin + (v - iMin) * (oMax - oMin) / (iMax - iMin);}const float DUR = 4.;const float FTIME = 0.75;vec3 getC(vec3 cs[3],int id) {for (int i=0; i<3; i++) {if (i == id) return cs[i];}}vec4 pe(vec4 x){return mod(((x*34.)+1.)*x, 289.);}vec4 tay(vec4 r){return 1.79284291400159 - 0.85373472095314 * r;}float sn(vec3 v){const vec2  C = vec2(1./6., 1./3.) ;const vec4  D = vec4(0., 0.5, 1., 2.);vec3 i  = floor(v + dot(v, C.yyy) );vec3 x0 =   v - i + dot(i, C.xxx) ;vec3 g = step(x0.yzx, x0.xyz);vec3 l = 1. - g;vec3 i1 = min( g.xyz, l.zxy );vec3 i2 = max( g.xyz, l.zxy );vec3 x1 = x0 - i1 + 1. * C.xxx;vec3 x2 = x0 - i2 + 2. * C.xxx;vec3 x3 = x0 - 1. + 3. * C.xxx;i = mod(i, 289. );vec4 p = pe( pe( pe(           i.z + vec4(0., i1.z, i2.z, 1. ))         + i.y + vec4(0., i1.y, i2.y, 1. ))         + i.x + vec4(0., i1.x, i2.x, 1. ));float n_ = 1./7.;vec3  ns = n_ * D.wyz - D.xzx;vec4 j = p - 49. * floor(p * ns.z *ns.z);vec4 x_ = floor(j * ns.z);vec4 y_ = floor(j - 7. * x_ );vec4 x = x_ *ns.x + ns.yyyy;vec4 y = y_ *ns.x + ns.yyyy;vec4 h = 1. - abs(x) - abs(y);vec4 b0 = vec4( x.xy, y.xy );vec4 b1 = vec4( x.zw, y.zw );vec4 s0 = floor(b0)*2. + 1.;vec4 s1 = floor(b1)*2. + 1.;vec4 sh = -step(h, vec4(0.));vec4 a0 = b0.xzyw + s0.xzyw*sh.xxyy ;vec4 a1 = b1.xzyw + s1.xzyw*sh.zzww ;vec3 p0 = vec3(a0.xy,h.x);vec3 p1 = vec3(a0.zw,h.y);vec3 p2 = vec3(a1.xy,h.z);vec3 p3 = vec3(a1.zw,h.w);vec4 norm = tay(vec4(dot(p0,p0), dot(p1,p1), dot(p2, p2), dot(p3,p3)));p0 *= norm.x;p1 *= norm.y;p2 *= norm.z;p3 *= norm.w;vec4 m = max(0.6 - vec4(dot(x0,x0), dot(x1,x1), dot(x2,x2), dot(x3,x3)), 0.);m = m * m;return 42. * dot( m*m, vec4( dot(p0,x0), dot(p1,x1),                              dot(p2,x2), dot(p3,x3) ) );}
+uniform float uT;
+varying vec3 vPos;
+void main() {vec2 st = gl_PointCoord.xy;float r = 4.;vec3 cs[3];vec3 yCol = vec3(0.992,0.631,0.11);vec3 rCol = vec3(0.914,0.082,0.2);vec3 gCol = vec3(0.408,0.765,0.714);cs[0] = yCol;cs[1] = rCol;cs[2] = gCol;float tCyc = mod(uT, 3. * DUR);float seg = tCyc / DUR;int cIdx = int(seg);int nextIdx = int(mod(seg + 1., 3.));float fFac = fract(seg);if (fFac >= (1. - (FTIME / DUR))) {fFac = remap(fFac, 1. - (FTIME / DUR), 1., 0., 1.);} else {fFac = 0.;}vec3 fCol = vec3(1.);float whFac = clamp(1. - 4. * (fFac - 0.5) * (fFac - 0.5), 0., 1.);vec3 cCol = mix(getC(cs, cIdx), getC(cs, nextIdx), clamp(fFac,0.,1.));cCol = mix(cCol, fCol, whFac);
+// ONLY YELLOW UNCOMMENT BELOW
+cCol = yCol;
+float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0., 1.);float op = clamp(pow(circ, 4.) * (sn(vPos + uT) + 1.) , 0., 1.);gl_FragColor = vec4(cCol, op);
           }
         `,
       });
-      this.particles = new THREE.Points(this.geometry, this.material);
+      this.ps = new THREE.Points(this.geo, this.mat);
 
-      this.particles.position.z = 1;
-      experience.scene.add(this.particles);
+      this.ps.position.z = 1;
+      exp.scene.add(this.ps);
 
     }
 
 
     update() {
-      this.material.uniforms.uTime.value = experience.time;
+      this.mat.uniforms.uT.value = exp.t;
     }
   }
 
@@ -1817,11 +751,11 @@ vec3 getColor(vec3 colors[3],int id) {
     constructor(props) {
       this.props = props;
 
-      experience.init();
+      exp.init();
       mouse.init();
 
-      this.particles = new Particles({count: 5000});
-      this.particles.init();
+      this.ps = new Particle({count: 5000});
+      this.ps.init();
 
       this.init();
       this.loop();
@@ -1830,20 +764,20 @@ vec3 getColor(vec3 colors[3],int id) {
     }
 
     init() {
-      this.props.$wrapper.prepend(experience.renderer.domElement);
-      this.output = new Output();
+      this.props.$wrapper.prepend(exp.rd.domElement);
+      this.o = new Output();
     }
 
     resize() {
-      experience.resize();
-      this.output.resize();
+      exp.resize();
+      this.o.resize();
     }
 
     render() {
       mouse.update();
-      experience.update();
-      this.particles.update();
-      this.output.update();
+      exp.update();
+      this.ps.update();
+      this.o.update();
     }
 
     loop() {
@@ -1851,13 +785,6 @@ vec3 getColor(vec3 colors[3],int id) {
       requestAnimationFrame(this.loop.bind(this));
     }
   }
-
-
-  window.EventBus = new EventBus();
-
-
-  if (!window.isDev) window.isDev = false;
-
   const webglMng = new Webgl({
     $wrapper: document.body
   });
