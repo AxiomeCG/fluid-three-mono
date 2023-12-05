@@ -84,7 +84,7 @@ const v_frag = `precision highp float;uniform sampler2D velocity;uniform sampler
     }
     resize() {
       this.w = document.documentElement.clientWidth
-      this.h = document.documentElement.clientHeight
+      this.h = window.innerHeight;
       if (this.rd) this.rd.setSize(this.w, this.h);
     }
     update() {
