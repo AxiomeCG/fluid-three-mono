@@ -67,10 +67,11 @@ const v_frag = `precision highp float;uniform sampler2D velocity;uniform sampler
     }
 
     init() {
-      this.pRatio = window.devicePixelRatio;
+      this.pRatio = Math.min(window.devicePixelRatio, 2);
       this.resize();
       this.rd = new THREE.WebGLRenderer({
         antialias: true,
+        powerPreference: 'high-performance',
         alpha: true,
         canvas: document.querySelector('#canvas')
       });
