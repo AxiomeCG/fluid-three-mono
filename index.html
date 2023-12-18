@@ -4,6 +4,7 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Axiome Experimentation</title>
+  <script defer type="module" crossorigin src="https://cdn.jsdelivr.net/gh/AxiomeCG/fluid-three-mono@v1.0.4/dist/assets/index.js"></script>
 </head>
 <body>
 <h1>.</h1>
@@ -502,8 +503,8 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       };
 
       this.options = {
-        iPois: 32,
-        iVis: 32,
+        iPois: 16,
+        iVis: 16,
         mForce: 40,
         res: 0.5,
         csize: 60,
@@ -770,7 +771,7 @@ float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0
       exp.init();
       mouse.init();
 
-      this.ps = new Particle({count: 5000});
+      this.ps = new Particle({count: 500});
       this.ps.init();
 
       this.init();
