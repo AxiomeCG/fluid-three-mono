@@ -4,7 +4,8 @@
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Axiome Experimentation</title>
-  <script defer type="module" crossorigin src="https://cdn.jsdelivr.net/gh/AxiomeCG/fluid-three-mono@v1.0.4/dist/assets/index.js"></script>
+  <script defer type="module" crossorigin
+          src="https://cdn.jsdelivr.net/gh/AxiomeCG/fluid-three-mono@v1.0.4/dist/assets/index.js"></script>
 </head>
 <body>
 <h1>.</h1>
@@ -109,6 +110,14 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       this.coord_old = new THREE.Vector2();
       this.diff = new THREE.Vector2();
       this.count = 0;
+      this.clock = new THREE.Clock();
+      this.clock.start();
+      this.target = new THREE.Vector2(Math.random() * 2 - 1, Math.random() * 2 - 1);
+
+      this.changeInterval = 1; // Time in seconds to wait before changing target
+      this.timeSinceLastChange = 0; // Time since last target change
+
+      this.acceleration = 0.005;
     }
 
     init() {
@@ -116,6 +125,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       c.addEventListener('mousemove', this.onMouseMove.bind(this), false);
       document.body.addEventListener('touchstart', this.onTouchStart.bind(this), false);
       document.body.addEventListener('touchmove', this.onTouchMove.bind(this), false);
+
     }
 
     setCoords(x, y) {
@@ -140,11 +150,44 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
     }
 
     update() {
+
+      this.timeSinceLastChange += this.clock.getDelta() * Math.random() * 4;
+
+      // Check if it's time to change target
+      if (this.timeSinceLastChange >= this.changeInterval) {
+        const r = document.querySelector('#canvas').getBoundingClientRect();
+
+        this.target.set((remap(Math.random(), 0, 1, -2, 2) ) * 4 - r.left, (Math.random() * 2 - 1) * 0.25 - r.top);
+        this.timeSinceLastChange = 0; // Reset timer
+
+        // Optionally, randomize the change interval for more unpredictability
+        this.changeInterval = 1 + Math.random(); // 1 to 2 seconds
+      }
+
+      // Smoothly move towards the target
+
+
+
+      if (window.innerWidth <= 768) {
+        if (this.coord.x < -1.5 || this.coord.x > 1.5 || this.coord.y < -1.5 || this.coord.y > 1.5) {
+          this.acceleration += 0.01;
+          this.acceleration = Math.min(this.acceleration, 0.1);
+
+          this.coord.lerp(this.target, this.timeSinceLastChange * this.acceleration);
+        } else {
+          this.acceleration = 0.002;
+          this.coord.lerp(this.target, this.timeSinceLastChange * this.acceleration);
+        }
+
+      }// Adjust the lerp factor (0.1 in this case) as needed
+
+
       this.diff.subVectors(this.coord, this.coord_old);
+
       this.coord_old.copy(this.coord);
       if (this.coord_old.x === 0 && this.coord_old.y === 0) this.diff.set(0, 0);
-      exp.camera.rotation.y = this.coord_old.x * Math.PI * 0.02;
-      exp.camera.rotation.x = -this.coord_old.y * Math.PI * 0.02;
+      if (window.innerWidth > 768) exp.camera.rotation.y = this.coord_old.x * Math.PI * 0.02;
+      if (window.innerWidth > 768) exp.camera.rotation.x = -this.coord_old.y * Math.PI * 0.02;
     }
   }
 
@@ -311,7 +354,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
             value: new THREE.Vector2(0., 0.)
           },
           scale: {
-            value: new THREE.Vector2(simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1))
+            value: new THREE.Vector2(simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.csize * remap(window.innerWidth, 320, 1440, 0.8, 1))
           }
         },
       })
@@ -330,7 +373,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       const us = this.mouse.material.uniforms;
       us.force.value.set(forceX, forceY);
       us.center.value.set(centerX, centerY);
-      us.scale.value.set(props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1));
+      us.scale.value.set(props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), props.csize * remap(window.innerWidth, 320, 1440, 0.8, 1));
       super.update();
     }
 
@@ -510,7 +553,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
         csize: 60,
         viscous: 500,
         isB: false,
-        dt: 0.0040,
+        dt: 0.0065,
         isViscous: false,
       };
 
@@ -783,6 +826,7 @@ float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0
     init() {
       this.props.$wrapper.prepend(exp.rd.domElement);
       this.o = new Output();
+
     }
 
     resize() {
