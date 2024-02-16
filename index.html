@@ -151,7 +151,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
     update() {
 
-      this.timeSinceLastChange += this.clock.getDelta() * Math.random() * 4;
+      this.timeSinceLastChange += this.clock.getDelta() * Math.random() * Math.random() * 5;
 
       // Check if it's time to change target
       if (this.timeSinceLastChange >= this.changeInterval) {
@@ -169,9 +169,9 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
 
       if (window.innerWidth <= 768) {
-        if (this.coord.x < -1.5 || this.coord.x > 1.5 || this.coord.y < -1.5 || this.coord.y > 1.5) {
-          this.acceleration += 0.01;
-          this.acceleration = Math.min(this.acceleration, 0.1);
+        if (this.coord.x < -1.35 || this.coord.x > 1.35 || this.coord.y < -1.35 || this.coord.y > 1.35) {
+          this.acceleration += 0.02;
+          this.acceleration = Math.min(this.acceleration, 0.2);
 
           this.coord.lerp(this.target, this.timeSinceLastChange * this.acceleration);
         } else {
