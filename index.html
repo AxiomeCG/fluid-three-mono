@@ -54,10 +54,10 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 }
 `;
   const a_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 fboSize;uniform vec2 px;varying vec2 uv;void main(){vec2 ratio = max(fboSize.x, fboSize.y) / fboSize;vec2 spot_new = uv;vec2 vel_old = texture2D(velocity, uv).xy;vec2 spot_old = spot_new - vel_old * dt * ratio;vec2 vel_new1 = texture2D(velocity, spot_old).xy;vec2 spot_new2 = spot_old + vel_new1 * dt * ratio;vec2 error = spot_new2 - spot_new;vec2 spot_new3 = spot_new - error / 2.;vec2 vel_2 = texture2D(velocity, spot_new3).xy;vec2 spot_old2 = spot_new3 - vel_2 * dt * ratio;vec2 newVel2 = texture2D(velocity, spot_old2).xy;gl_FragColor = vec4(newVel2, 0., 0.);}`;
-  const d_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 px;varying vec2 uv;void main(){float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;float divergence = (x1-x0 + y1-y0) / 2.;gl_FragColor = vec4(divergence / dt);}`;
+  const d_frag = `precision highp float;uniform sampler2D velocity;uniform float dt;uniform vec2 px;varying vec2 uv;void main(){float x0 = texture2D(velocity, uv-vec2(px.x, 0)).x;float x1 = texture2D(velocity, uv+vec2(px.x, 0)).x;float y0 = texture2D(velocity, uv-vec2(0, px.y)).y;float y1 = texture2D(velocity, uv+vec2(0, px.y)).y;float div = (x1-x0 + y1-y0) / 2.;gl_FragColor = vec4(div / dt);}`;
   const m_vert = `precision highp float;attribute vec3 position;attribute vec2 uv;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;void main(){vec2 pos = position.xy * scale * 2. * px + center;vUv = uv;gl_Position = vec4(pos, 0., 1.);}`;
   const eF_frag = `precision highp float;uniform vec2 force;uniform vec2 center;uniform vec2 scale;uniform vec2 px;varying vec2 vUv;void main(){vec2 circle = (vUv - 0.5) * 2.;float d = 1.-min(length(circle), 1.);d *= d;gl_FragColor = vec4(force * d, 0, 1);}`;
-  const p_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D divergence;uniform vec2 px;varying vec2 uv;void main(){float p0 = texture2D(pressure, uv+vec2(px.x * 2.,  0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * 2., 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * 2. )).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * 2. )).r;float div = texture2D(divergence, uv).r;float newP = (p0 + p1 + p2 + p3) / 4. - div;gl_FragColor = vec4(newP);}`;
+  const p_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D div;uniform vec2 px;varying vec2 uv;void main(){float p0 = texture2D(pressure, uv+vec2(px.x * 2.,  0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * 2., 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * 2. )).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * 2. )).r;float div = texture2D(div, uv).r;float newP = (p0 + p1 + p2 + p3) / 4. - div;gl_FragColor = vec4(newP);}`;
   const pr_frag = `precision highp float;uniform sampler2D pressure;uniform sampler2D velocity;uniform vec2 px;uniform float dt;varying vec2 uv;void main(){float step = 1.;float p0 = texture2D(pressure, uv+vec2(px.x * step, 0)).r;float p1 = texture2D(pressure, uv-vec2(px.x * step, 0)).r;float p2 = texture2D(pressure, uv+vec2(0, px.y * step)).r;float p3 = texture2D(pressure, uv-vec2(0, px.y * step)).r;vec2 v = texture2D(velocity, uv).xy;vec2 gradP = vec2(p0 - p1, p2 - p3) * 0.5;v = v - gradP * dt;gl_FragColor = vec4(v, 0., 1.);}`;
   const v_frag = `precision highp float;uniform sampler2D velocity;uniform sampler2D velocity_new;uniform float v;uniform vec2 px;uniform float dt;varying vec2 uv;void main(){vec2 old = texture2D(velocity, uv).xy;vec2 new0 = texture2D(velocity_new, uv + vec2(px.x * 2., 0)).xy;vec2 new1 = texture2D(velocity_new, uv - vec2(px.x * 2., 0)).xy;vec2 new2 = texture2D(velocity_new, uv + vec2(0, px.y * 2.)).xy;vec2 new3 = texture2D(velocity_new, uv - vec2(0, px.y * 2.)).xy;vec2 new = 4. * old + v * dt * (new0 + new1 + new2 + new3);new /= 4. * (1. + v * dt);gl_FragColor = vec4(new, 0., 0.);}`;
 
@@ -67,9 +67,9 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       this.h = null;
       this.t = 0;
       this.d = 0;
-      this.scene = new THREE.Scene();
-      this.camera = new THREE.Camera();
-      this.camera.position.z = 2;
+      this.sc = new THREE.Scene();
+      this.cam = new THREE.Camera();
+      this.cam.position.z = 2;
     }
 
     init() {
@@ -86,8 +86,8 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       this.rd.setClearColor(0x000000);
       this.rd.setPixelRatio(this.pRatio);
       this.rd.outputEncoding = THREE.sRGBEncoding;
-      this.clock = new THREE.Clock();
-      this.clock.start();
+      this.clk = new THREE.Clock();
+      this.clk.start();
     }
 
     resize() {
@@ -97,7 +97,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
     }
 
     update() {
-      this.d = this.clock.getDelta();
+      this.d = this.clk.getDelta();
       this.t += this.d;
     }
   }
@@ -106,144 +106,126 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
   class Mouse {
     constructor() {
-      this.coord = new THREE.Vector2();
-      this.coord_old = new THREE.Vector2();
+      this.crd = new THREE.Vector2();
+      this.crdOld = new THREE.Vector2();
       this.diff = new THREE.Vector2();
-      this.count = 0;
-      this.clock = new THREE.Clock();
-      this.clock.start();
-      this.target = new THREE.Vector2(Math.random() * 2 - 1, Math.random() * 2 - 1);
+      this.cnt = 0;
+      this.clk = new THREE.Clock();
+      this.clk.start();
+      this.trg = new THREE.Vector2(Math.random() * 2 - 1, Math.random() * 2 - 1);
 
-      this.changeInterval = 1; // Time in seconds to wait before changing target
-      this.timeSinceLastChange = 0; // Time since last target change
+      this.intv = 1; // Time in seconds to wait before changing trg
+      this.chg = 0; // Time since last trg change
 
-      this.acceleration = 0.005;
+      this.a = 0.005;
     }
 
     init() {
       const c = document.querySelector('#canvas');
-      c.addEventListener('mousemove', this.onMouseMove.bind(this), false);
-      document.body.addEventListener('touchstart', this.onTouchStart.bind(this), false);
-      document.body.addEventListener('touchmove', this.onTouchMove.bind(this), false);
+      c.addEventListener('mousemove', this.onMMove.bind(this), false);
+      document.body.addEventListener('touchstart', this.onTStart.bind(this), false);
+      document.body.addEventListener('touchmove', this.onTMove.bind(this), false);
 
     }
 
-    setCoords(x, y) {
-      this.coord.set((x / exp.w) * 2 - 1, -(y / exp.h) * 2 + 1);
+    setCds(x, y) {
+      this.crd.set((x / exp.w) * 2 - 1, -(y / exp.h) * 2 + 1);
     }
 
-    onMouseMove(event) {
+    onMMove(event) {
       const r = document.querySelector('#canvas').getBoundingClientRect();
-      this.setCoords(event.clientX - r.left, event.clientY - r.top);
+      this.setCds(event.clientX - r.left, event.clientY - r.top);
     }
 
-    onTouchStart(event) {
+    onTStart(event) {
       if (event.touches.length === 1) {
-        this.setCoords(event.touches[0].pageX, event.touches[0].pageY);
+        this.setCds(event.touches[0].pageX, event.touches[0].pageY);
       }
     }
 
-    onTouchMove(event) {
+    onTMove(event) {
       if (event.touches.length === 1) {
-        this.setCoords(event.touches[0].pageX, event.touches[0].pageY);
+        this.setCds(event.touches[0].pageX, event.touches[0].pageY);
       }
     }
 
     update() {
 
-      this.timeSinceLastChange += this.clock.getDelta() * Math.random() * Math.random() * 5;
-
-      // Check if it's time to change target
-      if (this.timeSinceLastChange >= this.changeInterval) {
+      this.chg += this.clk.getDelta() * Math.random() * Math.random() * 5;
+      if (this.chg >= this.intv) {
         const r = document.querySelector('#canvas').getBoundingClientRect();
-
-        this.target.set((remap(Math.random(), 0, 1, -2, 2) ) * 4 - r.left, (Math.random() * 2 - 1) * 0.25 - r.top);
-        this.timeSinceLastChange = 0; // Reset timer
-
-        // Optionally, randomize the change interval for more unpredictability
-        this.changeInterval = 1 + Math.random(); // 1 to 2 seconds
+        this.trg.set((remap(Math.random(), 0, 1, -2, 2) ) * 4 - r.left, (Math.random() * 2 - 1) * 0.25 - r.top);
+        this.chg = 0;
+        this.intv = 1 + Math.random();
       }
-
-      // Smoothly move towards the target
-
-
-
       if (window.innerWidth <= 768) {
-        if (this.coord.x < -1.35 || this.coord.x > 1.35 || this.coord.y < -1.35 || this.coord.y > 1.35) {
-          this.acceleration += 0.02;
-          this.acceleration = Math.min(this.acceleration, 0.2);
-
-          this.coord.lerp(this.target, this.timeSinceLastChange * this.acceleration);
+        if (this.crd.x < -1.35 || this.crd.x > 1.35 || this.crd.y < -1.35 || this.crd.y > 1.35) {
+          this.a += 0.02;
+          this.a = Math.min(this.a, 0.2);
+          this.crd.lerp(this.trg, this.chg * this.a);
         } else {
-          this.acceleration = 0.002;
-          this.coord.lerp(this.target, this.timeSinceLastChange * this.acceleration);
+          this.a = 0.002;
+          this.crd.lerp(this.trg, this.chg * this.a);
         }
-
-      }// Adjust the lerp factor (0.1 in this case) as needed
-
-
-      this.diff.subVectors(this.coord, this.coord_old);
-
-      this.coord_old.copy(this.coord);
-      if (this.coord_old.x === 0 && this.coord_old.y === 0) this.diff.set(0, 0);
-      if (window.innerWidth > 768) exp.camera.rotation.y = this.coord_old.x * Math.PI * 0.02;
-      if (window.innerWidth > 768) exp.camera.rotation.x = -this.coord_old.y * Math.PI * 0.02;
+      }
+      this.diff.subVectors(this.crd, this.crdOld);
+      this.crdOld.copy(this.crd);
+      if (this.crdOld.x === 0 && this.crdOld.y === 0) this.diff.set(0, 0);
+      if (window.innerWidth > 768) exp.camera.rotation.y = this.crdOld.x * Math.PI * 0.02;
+      if (window.innerWidth > 768) exp.camera.rotation.x = -this.crdOld.y * Math.PI * 0.02;
     }
   }
-
-  const mouse = new Mouse();
-
-  /** SIMULATION OF FLUIDS **/
-  class CShaderPass {
-    constructor(props) {
-      this.ps = props;
+  const mou = new Mouse();
+  class CSP {
+    constructor(pps) {
+      this.ps = pps;
       this.us = this.ps.material?.uniforms;
     }
 
     init() {
-      this.scene = new THREE.Scene();
-      this.camera = new THREE.Camera();
+      this.sc = new THREE.Scene();
+      this.cam = new THREE.Camera();
       if (this.us) {
         this.mat = new THREE.RawShaderMaterial(this.ps.material);
         this.geo = new THREE.PlaneGeometry(2.5, 2.5);
         this.plane = new THREE.Mesh(this.geo, this.mat);
-        this.scene.add(this.plane);
+        this.sc.add(this.plane);
       }
 
     }
 
     update() {
       exp.rd.setRenderTarget(this.ps.output);
-      exp.rd.render(this.scene, this.camera);
+      exp.rd.render(this.sc, this.cam);
       exp.rd.setRenderTarget(null);
     }
   }
 
-  class Adv extends CShaderPass {
-    constructor(simulationProps) {
+  class Adv extends CSP {
+    constructor(sProps) {
       super({
         material: {
           vertexShader: f_vert,
           fragmentShader: a_frag,
           uniforms: {
             bSpace: {
-              value: simulationProps.ceScale
+              value: sProps.ceScale
             },
             px: {
-              value: simulationProps.ceScale
+              value: sProps.ceScale
             },
             fboSize: {
-              value: simulationProps.fboSize
+              value: sProps.fboSize
             },
             velocity: {
-              value: simulationProps.src.texture
+              value: sProps.src.texture
             },
             dt: {
-              value: simulationProps.dt
+              value: sProps.dt
             }
           },
         },
-        output: simulationProps.dst
+        output: sProps.dst
       });
 
       this.init();
@@ -251,11 +233,11 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
     init() {
       super.init();
-      this.createBoundary();
+      this.cBound();
     }
 
-    createBoundary() {
-      const boundaryG = new THREE.BufferGeometry();
+    cBound() {
+      const boundG = new THREE.BufferGeometry();
       const vertices_boundary = new Float32Array([
         -1, -1, 0,
         -1, 1, 0,
@@ -269,49 +251,49 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
         1, -1, 0,
         -1, -1, 0
       ]);
-      boundaryG.setAttribute('position', new THREE.BufferAttribute(vertices_boundary, 3));
+      boundG.setAttribute('position', new THREE.BufferAttribute(vertices_boundary, 3));
 
-      const boundaryM = new THREE.RawShaderMaterial({
+      const boundM = new THREE.RawShaderMaterial({
         vertexShader: l_vert,
         fragmentShader: a_frag,
         uniforms: this.us
       });
 
-      this.line = new THREE.LineSegments(boundaryG, boundaryM);
-      this.scene.add(this.line);
+      this.l = new THREE.LineSegments(boundG, boundM);
+      this.sc.add(this.l);
     }
 
     update({dt, isB}) {
 
       this.us.dt.value = dt;
-      this.line.visible = isB;
+      this.l.visible = isB;
 
       super.update();
     }
   }
 
-  class Div extends CShaderPass {
-    constructor(simProps) {
+  class Div extends CSP {
+    constructor(sProps) {
       super({
         material: {
           vertexShader: f_vert,
           fragmentShader: d_frag,
           uniforms: {
             bSpace: {
-              value: simProps.bSpace
+              value: sProps.bSpace
             },
             velocity: {
-              value: simProps.src.texture
+              value: sProps.src.texture
             },
             px: {
-              value: simProps.ceScale
+              value: sProps.ceScale
             },
             dt: {
-              value: simProps.dt
+              value: sProps.dt
             }
           }
         },
-        output: simProps.dst
+        output: sProps.dst
       })
 
       this.init();
@@ -324,28 +306,28 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
   }
 
 
-  class ExtForce extends CShaderPass {
-    constructor(simProps) {
+  class ExtF extends CSP {
+    constructor(sProps) {
       super({
-        output: simProps.dst
+        output: sProps.dst
       });
 
-      this.init(simProps);
+      this.init(sProps);
     }
 
-    init(simProps) {
+    init(sProps) {
       super.init();
-      const mouseG = new THREE.PlaneGeometry(
+      const mouG = new THREE.PlaneGeometry(
         1, 1
       );
 
-      const mouseM = new THREE.RawShaderMaterial({
+      const mouM = new THREE.RawShaderMaterial({
         vertexShader: m_vert,
         fragmentShader: eF_frag,
         blending: THREE.AdditiveBlending,
         uniforms: {
           px: {
-            value: simProps.ceScale
+            value: sProps.ceScale
           },
           force: {
             value: new THREE.Vector2(0., 0.)
@@ -354,56 +336,56 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
             value: new THREE.Vector2(0., 0.)
           },
           scale: {
-            value: new THREE.Vector2(simProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), simProps.csize * remap(window.innerWidth, 320, 1440, 0.8, 1))
+            value: new THREE.Vector2(sProps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), sProps.csize * remap(window.innerWidth, 320, 1440, 0.8, 1))
           }
         },
       })
 
-      this.mouse = new THREE.Mesh(mouseG, mouseM);
-      this.scene.add(this.mouse);
+      this.mou = new THREE.Mesh(mouG, mouM);
+      this.sc.add(this.mou);
     }
 
-    update(props) {
-      const forceX = mouse.diff.x / 2 * props.mouse_force;
-      const forceY = mouse.diff.y / 2 * props.mouse_force;
-      const cursorSizeX = props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.ceScale.x;
-      const cursorSizeY = props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * props.ceScale.y;
-      const centerX = Math.min(Math.max(mouse.coord.x, -1 + cursorSizeX + props.ceScale.x * 2), 1 - cursorSizeX - props.ceScale.x * 2);
-      const centerY = Math.min(Math.max(mouse.coord.y, -1 + cursorSizeY + props.ceScale.y * 2), 1 - cursorSizeY - props.ceScale.y * 2);
-      const us = this.mouse.material.uniforms;
+    update(pps) {
+      const forceX = mou.diff.x / 2 * pps.mou_force;
+      const forceY = mou.diff.y / 2 * pps.mou_force;
+      const cSizeX = pps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * pps.ceScale.x;
+      const cSizeY = pps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * pps.ceScale.y;
+      const centerX = Math.min(Math.max(mou.coord.x, -1 + cSizeX + pps.ceScale.x * 2), 1 - cSizeX - pps.ceScale.x * 2);
+      const centerY = Math.min(Math.max(mou.coord.y, -1 + cSizeY + pps.ceScale.y * 2), 1 - cSizeY - pps.ceScale.y * 2);
+      const us = this.mou.material.uniforms;
       us.force.value.set(forceX, forceY);
       us.center.value.set(centerX, centerY);
-      us.scale.value.set(props.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), props.csize * remap(window.innerWidth, 320, 1440, 0.8, 1));
+      us.scale.value.set(pps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1), pps.csize * remap(window.innerWidth, 320, 1440, 0.8, 1));
       super.update();
     }
 
   }
 
-  class Poisson extends CShaderPass {
-    constructor(simProps) {
+  class Pois extends CSP {
+    constructor(sProps) {
       super({
         material: {
           vertexShader: f_vert,
           fragmentShader: p_frag,
           uniforms: {
             bSpace: {
-              value: simProps.bSpace
+              value: sProps.bSpace
             },
             pressure: {
-              value: simProps.dst_.texture
+              value: sProps.dst_.texture
             },
-            divergence: {
-              value: simProps.src.texture
+            div: {
+              value: sProps.src.texture
             },
             px: {
-              value: simProps.ceScale
+              value: sProps.ceScale
             }
           },
         },
-        output: simProps.dst,
+        output: sProps.dst,
 
-        output0: simProps.dst_,
-        output1: simProps.dst
+        output0: sProps.dst_,
+        output1: sProps.dst
       });
 
       this.init();
@@ -430,31 +412,31 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
     }
   }
 
-  class Pressure extends CShaderPass {
-    constructor(simProps) {
+  class Pres extends CSP {
+    constructor(sProps) {
       super({
         material: {
           vertexShader: f_vert,
           fragmentShader: pr_frag,
           uniforms: {
             bSpace: {
-              value: simProps.bSpace
+              value: sProps.bSpace
             },
             pressure: {
-              value: simProps.src_p.texture
+              value: sProps.src_p.texture
             },
             velocity: {
-              value: simProps.src_v.texture
+              value: sProps.src_v.texture
             },
             px: {
-              value: simProps.ceScale
+              value: sProps.ceScale
             },
             dt: {
-              value: simProps.dt
+              value: sProps.dt
             }
           }
         },
-        output: simProps.dst
+        output: sProps.dst
       });
 
       this.init();
@@ -468,38 +450,38 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
   }
 
-  class Vis extends CShaderPass {
-    constructor(simProps) {
+  class Vis extends CSP {
+    constructor(sProps) {
       super({
         material: {
           vertexShader: f_vert,
           fragmentShader: v_frag,
           uniforms: {
             bSpace: {
-              value: simProps.bSpace
+              value: sProps.bSpace
             },
             velocity: {
-              value: simProps.src.texture
+              value: sProps.src.texture
             },
             velocity_new: {
-              value: simProps.dst_.texture
+              value: sProps.dst_.texture
             },
             v: {
-              value: simProps.viscous,
+              value: sProps.viscous,
             },
             px: {
-              value: simProps.ceScale
+              value: sProps.ceScale
             },
             dt: {
-              value: simProps.dt
+              value: sProps.dt
             }
           }
         },
 
-        output: simProps.dst,
+        output: sProps.dst,
 
-        output0: simProps.dst_,
-        output1: simProps.dst
+        output0: sProps.dst_,
+        output1: sProps.dst
       })
 
       this.init();
@@ -529,8 +511,8 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
   }
 
   class Sim {
-    constructor(props) {
-      this.props = props;
+    constructor(pps) {
+      this.pps = pps;
 
       this.fbos = {
         vel_0: null,
@@ -545,7 +527,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
         pressure_1: null,
       };
 
-      this.options = {
+      this.opt = {
         iPois: 16,
         iVis: 16,
         mForce: 40,
@@ -554,7 +536,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
         viscous: 500,
         isB: false,
         dt: 0.0065,
-        isViscous: false,
+        isVis: false,
       };
 
 
@@ -567,16 +549,16 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
 
     init() {
-      this.calcSize();
-      this.createFBOs();
-      this.createShaderPass();
+      this.cSize();
+      this.crtFBOs();
+      this.crtShdPass();
     }
 
-    createFBOs() {
+    crtFBOs() {
       const type = (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) ? THREE.HalfFloatType : THREE.FloatType;
 
       for (let key in this.fbos) {
-        this.fbos[key] = new THREE.WebGLRenderTarget(
+        this.fbos[key] = new THREE.WebGLRendertrg(
           this.fboSize.x,
           this.fboSize.y,
           {
@@ -586,40 +568,40 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       }
     }
 
-    createShaderPass() {
-      this.advection = new Adv({
+    crtShdPass() {
+      this.adv = new Adv({
         ceScale: this.ceScale,
         fboSize: this.fboSize,
-        dt: this.options.dt,
+        dt: this.opt.dt,
         src: this.fbos.vel_0,
         dst: this.fbos.vel_1
       });
 
-      this.externalForce = new ExtForce({
+      this.extF = new ExtF({
         ceScale: this.ceScale,
-        csize: this.options.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
+        csize: this.opt.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
         dst: this.fbos.vel_1,
       });
 
-      this.viscous = new Vis({
+      this.vis = new Vis({
         ceScale: this.ceScale,
         bSpace: this.bSpace,
-        viscous: this.options.viscous,
+        viscous: this.opt.viscous,
         src: this.fbos.vel_1,
         dst: this.fbos.vel_viscous1,
         dst_: this.fbos.vel_viscous0,
-        dt: this.options.dt,
+        dt: this.opt.dt,
       });
 
-      this.divergence = new Div({
+      this.div = new Div({
         ceScale: this.ceScale,
         bSpace: this.bSpace,
         src: this.fbos.vel_viscous0,
         dst: this.fbos.div,
-        dt: this.options.dt,
+        dt: this.opt.dt,
       });
 
-      this.poisson = new Poisson({
+      this.pois = new Pois({
         ceScale: this.ceScale,
         bSpace: this.bSpace,
         src: this.fbos.div,
@@ -627,19 +609,19 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
         dst_: this.fbos.pressure_0,
       });
 
-      this.pre = new Pressure({
+      this.pre = new Pres({
         ceScale: this.ceScale,
         bSpace: this.bSpace,
         src_p: this.fbos.pressure_0,
         src_v: this.fbos.vel_viscous0,
         dst: this.fbos.vel_0,
-        dt: this.options.dt,
+        dt: this.opt.dt,
       });
     }
 
-    calcSize() {
-      const w = Math.round(this.options.res * exp.w);
-      const h = Math.round(this.options.res * exp.h);
+    cSize() {
+      const w = Math.round(this.opt.res * exp.w);
+      const h = Math.round(this.opt.res * exp.h);
 
       const px_x = 1 / w;
       const px_y = 1 / h;
@@ -649,7 +631,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
     }
 
     resize() {
-      this.calcSize();
+      this.cSize();
 
       for (let key in this.fbos) {
         this.fbos[key].setSize(this.fboSize.x, this.fboSize.y);
@@ -657,49 +639,44 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
     }
 
 
-    update() {
+    upd() {
 
 
       this.bSpace.copy(this.ceScale);
 
-      this.advection.update(this.options);
+      this.adv.update(this.opt);
 
-      this.externalForce.update({
-        csize: this.options.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
-        mouse_force: this.options.mForce,
+      this.extF.update({
+        csize: this.opt.csize * remap(window.innerWidth, 320, 1440, 0.5, 1),
+        mou_force: this.opt.mForce,
         ceScale: this.ceScale
       });
-
       let vel = this.fbos.vel_1;
-
-      if (this.options.isViscous) {
-        vel = this.viscous.update({
-          viscous: this.options.viscous,
-          iterations: this.options.iVis,
-          dt: this.options.dt
+      if (this.opt.isVis) {
+        vel = this.vis.update({
+          viscous: this.opt.viscous,
+          iterations: this.opt.iVis,
+          dt: this.opt.dt
         });
       }
-
-      this.divergence.update({vel});
-
-      const pre = this.poisson.update({
-        iterations: this.options.iPois,
+      this.div.update({vel});
+      const pre = this.pois.update({
+        iterations: this.opt.iPois,
       });
-
       this.pre.update({vel, pressure: pre});
     }
   }
 
 
-  class Output {
+  class Out {
     constructor() {
       this.init();
     }
 
     init() {
       this.sim = new Sim();
-      this.scene = exp.scene;
-      this.camera = exp.camera;
+      this.sc = exp.scene;
+      this.cam = exp.camera;
       this.mat = new THREE.RawShaderMaterial({
         vertexShader: f_vert,
         fragmentShader: c_frag,
@@ -720,48 +697,48 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
         this.mat
       );
 
-      this.scene.add(this.o);
+      this.sc.add(this.o);
     }
 
     resize() {
       this.sim.resize();
     }
 
-    render() {
+    rend() {
       exp.rd.setRenderTarget(null);
-      exp.rd.render(this.scene, this.camera);
+      exp.rd.render(this.sc, this.cam);
     }
 
-    update() {
+    upd() {
       this.mat.uniforms.uT.value = exp.clock.getElapsedTime();
-      this.sim.update();
-      this.render();
+      this.sim.upd();
+      this.rend();
     }
   }
 
-  class Particle {
-    constructor(props) {
-      this.props = props;
+  class Part {
+    constructor(pps) {
+      this.pps = pps;
     }
 
     init() {
 
-      const position = new Float32Array(3 * this.props.count);
-      const size = new Float32Array(this.props.count);
+      const pos = new Float32Array(3 * this.pps.cnt);
+      const s = new Float32Array(this.pps.cnt);
 
-      for (let i = 0; i < this.props.count; i++) {
-        position[3 * i + 0] = (Math.random() * 2 - 1) * 1.5;
-        position[3 * i + 1] = (Math.random() * 2 - 1) * 1.5;
-        position[3 * i + 2] = (Math.random()) * 0.5 + 0.42;
+      for (let i = 0; i < this.pps.cnt; i++) {
+        pos[3 * i + 0] = (Math.random() * 2 - 1) * 1.5;
+        pos[3 * i + 1] = (Math.random() * 2 - 1) * 1.5;
+        pos[3 * i + 2] = (Math.random()) * 0.5 + 0.42;
 
-        size[i] = 3;
+        s[i] = 3;
       }
 
 
       this.geo = new THREE.BufferGeometry();
 
-      this.geo.setAttribute('position', new THREE.BufferAttribute(position, 3));
-      this.geo.setAttribute('size', new THREE.BufferAttribute(size, 1));
+      this.geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      this.geo.setAttribute('size', new THREE.BufferAttribute(s, 1));
       this.us = {
         uT: {
           value: 0
@@ -801,20 +778,20 @@ float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0
     }
 
 
-    update() {
+    upd() {
       this.mat.uniforms.uT.value = exp.t;
     }
   }
 
 
   class Webgl {
-    constructor(props) {
-      this.props = props;
+    constructor(pps) {
+      this.pps = pps;
 
       exp.init();
-      mouse.init();
+      mou.init();
 
-      this.ps = new Particle({count: 500});
+      this.ps = new Part({cnt: 500});
       this.ps.init();
 
       this.init();
@@ -824,8 +801,8 @@ float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0
     }
 
     init() {
-      this.props.$wrapper.prepend(exp.rd.domElement);
-      this.o = new Output();
+      this.pps.$wrapper.prepend(exp.rd.domElement);
+      this.o = new Out();
 
     }
 
@@ -834,24 +811,20 @@ float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0
       this.o.resize();
     }
 
-    render() {
-      mouse.update();
+    rend() {
+      mou.update();
       exp.update();
-      this.ps.update();
-      this.o.update();
+      this.ps.upd();
+      this.o.upd();
     }
 
     loop() {
-      this.render();
+      this.rend();
       requestAnimationFrame(this.loop.bind(this));
     }
   }
-
-  const webglMng = new Webgl({
+  new Webgl({
     $wrapper: document.body
   });
-
-
 </script>
-
 </html>
