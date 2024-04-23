@@ -350,8 +350,8 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       const forceY = mou.diff.y / 2 * pps.mou_force;
       const cSizeX = pps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * pps.ceScale.x;
       const cSizeY = pps.csize * remap(window.innerWidth, 320, 1440, 0.5, 1) * pps.ceScale.y;
-      const centerX = Math.min(Math.max(mou.coord.x, -1 + cSizeX + pps.ceScale.x * 2), 1 - cSizeX - pps.ceScale.x * 2);
-      const centerY = Math.min(Math.max(mou.coord.y, -1 + cSizeY + pps.ceScale.y * 2), 1 - cSizeY - pps.ceScale.y * 2);
+      const centerX = Math.min(Math.max(mou.crd.x, -1 + cSizeX + pps.ceScale.x * 2), 1 - cSizeX - pps.ceScale.x * 2);
+      const centerY = Math.min(Math.max(mou.crd.y, -1 + cSizeY + pps.ceScale.y * 2), 1 - cSizeY - pps.ceScale.y * 2);
       const us = this.mou.material.uniforms;
       us.force.value.set(forceX, forceY);
       us.center.value.set(centerX, centerY);
@@ -558,7 +558,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
       const type = (/(iPad|iPhone|iPod)/g.test(navigator.userAgent)) ? THREE.HalfFloatType : THREE.FloatType;
 
       for (let key in this.fbos) {
-        this.fbos[key] = new THREE.WebGLRendertrg(
+        this.fbos[key] = new THREE.WebGLRenderTarget(
           this.fboSize.x,
           this.fboSize.y,
           {
@@ -675,8 +675,8 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
 
     init() {
       this.sim = new Sim();
-      this.sc = exp.scene;
-      this.cam = exp.camera;
+      this.sc = exp.sc;
+      this.cam = exp.cam;
       this.mat = new THREE.RawShaderMaterial({
         vertexShader: f_vert,
         fragmentShader: c_frag,
@@ -710,7 +710,7 @@ gl_FragColor = vec4(mix(vec3(0.), cCol, clamp(pow(strength, 7.), 0., 1.)), 1.);
     }
 
     upd() {
-      this.mat.uniforms.uT.value = exp.clock.getElapsedTime();
+      this.mat.uniforms.uT.value = exp.clk.getElapsedTime();
       this.sim.upd();
       this.rend();
     }
@@ -773,7 +773,7 @@ float dTCenter = distance(st, vec2(0.5)) * r;float circ = clamp(1. - dTCenter, 0
       this.ps = new THREE.Points(this.geo, this.mat);
 
       this.ps.position.z = 1;
-      exp.scene.add(this.ps);
+      exp.sc.add(this.ps);
 
     }
 
